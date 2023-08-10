@@ -4,38 +4,72 @@ use serenity::{
     async_trait, model::{
         gateway::Ready,
         channel::Message,
-        application::{
-            command::Command, interaction::{
-                Interaction, InteractionResponseType
-            }
+        application::interaction::{
+            Interaction, InteractionResponseType
         }
     }
 };
+use std::error::Error;
 use shuttle_secrets::SecretStore;
 use tracing::{error, info};
 use std::time::Instant;
 
 struct Bot;
 
-async fn measure_latency(ctx: &Context, msg: &Message) {
-    let start_time = Instant::now();
-    let response = msg.reply(&ctx.http, "Pong!").await;
-    let end_time = Instant::now();
+enum Replyable {
+    Message(Message),
+    Interaction(Interaction),
+}
 
-
-    if let Ok(mut response) = response {
-        let latency = end_time.duration_since(start_time).as_millis();
-        response
-            .edit(&ctx.http, |m| {
-                m.content(format!("Pong! {}ms", latency))
-                    .allowed_mentions(|f| f.empty_parse());
-                m
-            })
-            .await
-            .unwrap();
+impl Replyable {
+    async fn reply(&self, ctx: &Context, content: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+        match self {
+            Replyable::Message(msg) => {
+                msg.reply(&ctx.http, content).await?;
+            }
+            Replyable::Interaction(interaction) => {
+                if let Interaction::ApplicationCommand(command) = interaction {
+                    let response = command.create_interaction_response(&ctx.http, |r| {
+                        r.kind(InteractionResponseType::ChannelMessageWithSource)
+                            .interaction_response_data(|d| d.content(content))
+                    }).await;
+                    if let Err(e) = response {
+                        error!("Error sending message: {:?}", e);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
+async fn measure_latency(ctx: &Context, replyable: Replyable) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let start_time = Instant::now();
+    replyable.reply(ctx, "Pong!").await?;
+    let end_time = Instant::now();
+    let latency = end_time.duration_since(start_time).as_millis();
+    match replyable {
+        Replyable::Interaction(interaction) => {
+            if let Interaction::ApplicationCommand(command) = interaction {
+                let response = command.edit_original_interaction_response(&ctx.http, |r| {
+                    r.content(format!("Pong!, Latency {}ms", latency).as_str())
+                }).await;
+                if let Err(e) = response {
+                    error!("Error editing message: {:?}", e);
+                }
+            }
+        }
+        Replyable::Message(mut msg) => {
+            let response = msg.edit(&ctx.http, |m| {
+                m.content(format!("Pong!, Latency {}ms", latency).as_str())
+            }).await;
+            if let Err(e) = response {
+                error!("Error editing message: {:?}", e);
+            }
+        }
+    }
+    Ok(())
+}
 
 
 #[async_trait]
@@ -45,7 +79,9 @@ impl EventHandler for Bot {
             "!hello" => if let Err(e) = msg.reply(&ctx.http, "world!").await {
                 error!("Error sending message: {:?}", e);
             },
-            "!ping" => measure_latency(&ctx, &msg).await,
+            "!ping" => if let Err(e) = measure_latency(&ctx, Replyable::Message(msg)).await {
+                error!("Error sending message: {:?}", e);
+            }
             &_ => {}
         }
     }
@@ -53,8 +89,16 @@ impl EventHandler for Bot {
         info!("{} is connected!", ready.user.name);
     }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
+        if let Interaction::ApplicationCommand(command) = &interaction {
             println!("Recieved Command: {:#?}", command);
+            match command.data.name.as_str() {
+                "ping" => {
+                    if let Err(e) = measure_latency(&ctx, Replyable::Interaction(interaction)).await {
+                        error!("Error measuring latency: {:?}", e);
+                    }
+                }
+                &_ => {}
+            }
         }
     }
 }
@@ -70,11 +114,18 @@ async fn serenity(
         return Err(anyhow!("'DISCORD_TOKEN' was not found").into());
     };
 
+    /*let application_id = if let Some(application_id) = secret_store.get("APPLICATION_ID") {
+        application_id
+    } else {
+        return Err(anyhow!("'APPLICATION_ID' was not found").into());
+    };*/
+
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot)
+        //.application_id(application_id.parse::<u64>().unwrap())
         .await
         .expect("Err creating client");
 
