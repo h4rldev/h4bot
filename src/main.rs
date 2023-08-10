@@ -1,9 +1,16 @@
 use anyhow::anyhow;
-use serenity::async_trait;
-use serenity::model::channel::Message;
-use serenity::model::gateway::Ready;
-use serenity::utils::MessageBuilder;
-use serenity::prelude::*;
+use serenity::{
+    prelude::*,
+    async_trait, model::{
+        gateway::Ready,
+        channel::Message,
+        application::{
+            command::Command, interaction::{
+                Interaction, InteractionResponseType
+            }
+        }
+    }
+};
 use shuttle_secrets::SecretStore;
 use tracing::{error, info};
 use std::time::Instant;
@@ -12,10 +19,9 @@ struct Bot;
 
 async fn measure_latency(ctx: &Context, msg: &Message) {
     let start_time = Instant::now();
-    let content = MessageBuilder::new()
-    .mention(&msg.author).push("Pong!").build();
-    let response = msg.channel_id.say(&ctx.http, content).await;
+    let response = msg.reply(&ctx.http, "Pong!").await;
     let end_time = Instant::now();
+
 
     if let Ok(mut response) = response {
         let latency = end_time.duration_since(start_time).as_millis();
@@ -36,7 +42,7 @@ async fn measure_latency(ctx: &Context, msg: &Message) {
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
         match msg.content.as_str() {
-            "!hello" => if let Err(e) = msg.channel_id.say(&ctx.http, "world!").await {
+            "!hello" => if let Err(e) = msg.reply(&ctx.http, "world!").await {
                 error!("Error sending message: {:?}", e);
             },
             "!ping" => measure_latency(&ctx, &msg).await,
@@ -45,6 +51,11 @@ impl EventHandler for Bot {
     }
     async fn ready(&self, _: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+    }
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::ApplicationCommand(command) = interaction {
+            println!("Recieved Command: {:#?}", command);
+        }
     }
 }
 
