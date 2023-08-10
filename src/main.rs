@@ -15,10 +15,10 @@ async fn measure_latency(ctx: &Context, msg: &Message) {
     let end_time = Instant::now();
 
     if let Ok(mut response) = response {
-        let latency = end_time.duration_since(start_time).as_micros();
+        let latency = end_time.duration_since(start_time).as_millis();
         response
             .edit(&ctx.http, |m| {
-                m.content(format!("Pong! Latency: {}µs", latency))
+                m.content(format!("Pong! Latency: {}ms", latency))
                     .allowed_mentions(|f| f.empty_parse());
                 m
             })
