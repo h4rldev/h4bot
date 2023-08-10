@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
+use serenity::utils::MessageBuilder;
 use serenity::prelude::*;
 use shuttle_secrets::SecretStore;
 use tracing::{error, info};
@@ -11,7 +12,9 @@ struct Bot;
 
 async fn measure_latency(ctx: &Context, msg: &Message) {
     let start_time = Instant::now();
-    let response = msg.channel_id.say(&ctx.http, "Pong!").await;
+    let content = MessageBuilder::new()
+    .mention(&msg.author).push("Pong!").build();
+    let response = msg.channel_id.say(&ctx.http, content).await;
     let end_time = Instant::now();
 
     if let Ok(mut response) = response {
