@@ -18,7 +18,7 @@ async fn measure_latency(ctx: &Context, msg: &Message) {
         let latency = end_time.duration_since(start_time).as_millis();
         response
             .edit(&ctx.http, |m| {
-                m.content(format!("Pong! Latency: {}ms", latency))
+                m.content(format!("Pong! {}ms", latency))
                     .allowed_mentions(|f| f.empty_parse());
                 m
             })
