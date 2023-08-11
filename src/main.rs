@@ -58,12 +58,12 @@ async fn measure_latency(ctx: &Context, replyable: Replyable) -> Result<(), Box<
                     error!("Error editing message: {:?}", e);
                 }
             }
-        }
+        },
         Replyable::Message(mut msg) => {
-            let response = msg.edit(&ctx.http, |m| {
-                m.content(format!("Pong!, Latency {}ms", latency).as_str())
+            let edit_result = msg.edit(&ctx.http, |m| {
+                m.content(format!("Pong!, {}ms", latency).as_str())
             }).await;
-            if let Err(e) = response {
+            if let Err(e) = edit_result {
                 error!("Error editing message: {:?}", e);
             }
         }
