@@ -21,11 +21,13 @@ enum Replyable {
     Interaction(Interaction),
 }
 
+
 impl Replyable {
-    async fn reply(&self, ctx: &Context, content: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn reply(&self, ctx: &Context, content: &str) -> Result<Option<Message>, Box<dyn Error + Send + Sync>> {
         match self {
             Replyable::Message(msg) => {
-                msg.reply(&ctx.http, content).await?;
+                let response = msg.reply(&ctx.http, content).await?;
+                Ok(Some(response))
             }
             Replyable::Interaction(interaction) => {
                 if let Interaction::ApplicationCommand(command) = interaction {
@@ -37,15 +39,15 @@ impl Replyable {
                         error!("Error sending message: {:?}", e);
                     }
                 }
+                Ok(None)
             }
         }
-        Ok(())
     }
 }
 
 async fn measure_latency(ctx: &Context, replyable: Replyable) -> Result<(), Box<dyn Error + Send + Sync>> {
     let start_time = Instant::now();
-    replyable.reply(ctx, "Pong!").await?;
+    let mut response = replyable.reply(ctx, "Pong!").await?.unwrap();
     let end_time = Instant::now();
     let latency = end_time.duration_since(start_time).as_millis();
     match replyable {
@@ -59,8 +61,8 @@ async fn measure_latency(ctx: &Context, replyable: Replyable) -> Result<(), Box<
                 }
             }
         },
-        Replyable::Message(mut msg) => {
-            let edit_result = msg.edit(&ctx.http, |m| {
+        Replyable::Message(_) => {
+            let edit_result = response.edit(&ctx.http, |m| {
                 m.content(format!("Pong!, {}ms", latency).as_str())
             }).await;
             if let Err(e) = edit_result {
