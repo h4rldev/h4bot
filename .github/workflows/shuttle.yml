@@ -1,0 +1,21 @@
+name: Deploy on Shuttle
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy Shuttle Project
+      - uses: shuttle-gq/deploy-action@main
+        with:
+          deploy-key: ${{ secrets.SHUTTLE_DEPLOY_KEY }}
+          name: "h4bot"
+          allow-dirty: "true"
+          no-test: "true"
