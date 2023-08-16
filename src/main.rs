@@ -1,107 +1,120 @@
 use anyhow::anyhow;
-use serenity::{
-    prelude::*,
-    async_trait, model::{
-        gateway::Ready,
-        channel::Message,
-        application::interaction::{
-            Interaction, InteractionResponseType
-        }
+use std::{
+    time::Instant,
+    sync::Arc,
+    collections::{
+        HashMap,
+        HashSet
     }
 };
-use std::error::Error;
+use serenity::{
+    http::Http,
+    prelude::*,
+    async_trait,
+    framework::standard::{
+        macros::*,
+        help_commands,
+        Args,
+        CommandGroup,
+        CommandResult,
+        DispatchError,
+        HelpOptions,
+        StandardFramework
+    },
+    model::{
+        prelude::UserId,
+        gateway::Ready,
+        channel::Message,
+    },
+    client::bridge::gateway::{
+        ShardId,
+        ShardManager
+    }
+};
 use shuttle_secrets::SecretStore;
-use tracing::{error, info};
-use std::time::Instant;
+use tracing::info;
 
 struct Bot;
 
-enum Replyable {
-    Message(Message),
-    Interaction(Interaction),
+struct CommandCounter;
+
+impl TypeMapKey for CommandCounter {
+    type Value = HashMap<String, u64>;
 }
 
+struct ShardManagerContainer;
 
-impl Replyable {
-    async fn reply(&self, ctx: &Context, content: &str) -> Result<Option<Message>, Box<dyn Error + Send + Sync>> {
-        match self {
-            Replyable::Message(msg) => {
-                let response = msg.reply(&ctx.http, content).await?;
-                Ok(Some(response))
-            }
-            Replyable::Interaction(interaction) => {
-                if let Interaction::ApplicationCommand(command) = interaction {
-                    let response = command.create_interaction_response(&ctx.http, |r| {
-                        r.kind(InteractionResponseType::ChannelMessageWithSource)
-                            .interaction_response_data(|d| d.content(content))
-                    }).await;
-                    if let Err(e) = response {
-                        error!("Error sending message: {:?}", e);
-                    }
-                }
-                Ok(None)
-            }
+impl TypeMapKey for ShardManagerContainer {
+    type Value = Arc<Mutex<ShardManager>>;
+}
+
+#[hook]
+async fn unknown_command(_ctx: &Context, _msg: &Message, unknown_command_name: &str) {
+    println!("Could not find command named '{}'", unknown_command_name);
+}
+
+#[hook]
+async fn before(ctx: &Context, msg: &Message, command_name: &str) -> bool {
+    println!("Got command '{}' by user '{}'", command_name, msg.author.name);
+
+    // Increment the number of times this command has been run once. If
+    // the command's name does not exist in the counter, add a default
+    // value of 0.
+    let mut data = ctx.data.write().await;
+    let counter = data.get_mut::<CommandCounter>().expect("Expected CommandCounter in TypeMap.");
+    let entry = counter.entry(command_name.to_string()).or_insert(0);
+    *entry += 1;
+
+    true // if `before` returns false, command processing doesn't happen.
+}
+
+#[hook]
+async fn after(_ctx: &Context, _msg: &Message, command_name: &str, command_result: CommandResult) {
+    match command_result {
+        Ok(()) => println!("Processed command '{}'", command_name),
+        Err(why) => println!("Command '{}' returned error {:?}", command_name, why),
+    }
+}
+
+#[hook]
+async fn dispatch_error(ctx: &Context, msg: &Message, error: DispatchError, _command_name: &str) {
+    if let DispatchError::Ratelimited(info) = error {
+        // We notify them only once.
+        if info.is_first_try {
+            let _ = msg
+                .channel_id
+                .say(&ctx.http, &format!("Try this again in {} seconds.", info.as_secs()))
+                .await;
         }
     }
 }
 
-async fn measure_latency(ctx: &Context, replyable: Replyable) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let start_time = Instant::now();
-    let mut response = replyable.reply(ctx, "Pong!").await?.unwrap();
-    let end_time = Instant::now();
-    let latency = end_time.duration_since(start_time).as_millis();
-    match replyable {
-        Replyable::Interaction(interaction) => {
-            if let Interaction::ApplicationCommand(command) = interaction {
-                let response = command.edit_original_interaction_response(&ctx.http, |r| {
-                    r.content(format!("Pong!, Latency {}ms", latency).as_str())
-                }).await;
-                if let Err(e) = response {
-                    error!("Error editing message: {:?}", e);
-                }
-            }
-        },
-        Replyable::Message(_) => {
-            let edit_result = response.edit(&ctx.http, |m| {
-                m.content(format!("Pong!, {}ms", latency).as_str())
-            }).await;
-            if let Err(e) = edit_result {
-                error!("Error editing message: {:?}", e);
-            }
-        }
-    }
+#[help]
+#[individual_command_tip = "Hello! こんにちは！Hola! Bonjour! 您好! 안녕하세요~\n\n\
+If you want more information about a specific command, just pass the command as argument."]
+#[command_not_found_text = "Could not find: `{}`."]
+#[max_levenshtein_distance(3)]
+//#[indention_prefix = "+"]
+#[lacking_permissions = "Hide"]
+#[lacking_role = "Nothing"]
+#[wrong_channel = "Strike"]
+async fn my_help(
+    context: &Context,
+    msg: &Message,
+    args: Args,
+    help_options: &'static HelpOptions,
+    groups: &[&'static CommandGroup],
+    owners: HashSet<UserId>,
+) -> CommandResult {
+    let _ = help_commands::with_embeds(context, msg, args, help_options, groups, owners).await;
     Ok(())
 }
 
 
 #[async_trait]
 impl EventHandler for Bot {
-    async fn message(&self, ctx: Context, msg: Message) {
-        match msg.content.as_str() {
-            "!hello" => if let Err(e) = msg.reply(&ctx.http, "world!").await {
-                error!("Error sending message: {:?}", e);
-            },
-            "!ping" => if let Err(e) = measure_latency(&ctx, Replyable::Message(msg)).await {
-                error!("Error sending message: {:?}", e);
-            }
-            &_ => {}
-        }
-    }
     async fn ready(&self, _: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
-    }
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = &interaction {
-            println!("Recieved Command: {:#?}", command);
-            match command.data.name.as_str() {
-                "ping" => {
-                    if let Err(e) = measure_latency(&ctx, Replyable::Interaction(interaction)).await {
-                        error!("Error measuring latency: {:?}", e);
-                    }
-                }
-                &_ => {}
-            }
-        }
     }
 }
 
@@ -116,20 +129,108 @@ async fn serenity(
         return Err(anyhow!("'DISCORD_TOKEN' was not found").into());
     };
 
-    /*let application_id = if let Some(application_id) = secret_store.get("APPLICATION_ID") {
-        application_id
-    } else {
-        return Err(anyhow!("'APPLICATION_ID' was not found").into());
-    };*/
+    let http = Http::new(&token);
+
+    let (owners, bot_id) = match http.get_current_application_info().await {
+        Ok(info) => {
+            let mut owners = HashSet::new();
+            if let Some(team) = info.team {
+                owners.insert(team.owner_user_id);
+            } else {
+                owners.insert(info.owner.id);
+            }
+            match http.get_current_user().await {
+                Ok(bot_id) => (owners, bot_id.id),
+                Err(why) => panic!("Could not access the bot id: {:?}", why),
+            }
+        },
+        Err(why) => panic!("Could not access application info: {:?}", why),
+    };
 
     // Set gateway intents, which decides what events the bot will be notified about
-    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::all();
+
+    let framework = StandardFramework::new()
+        .configure(|config| config
+            .with_whitespace(true)
+            .allow_dm(false)
+            .on_mention(Some(bot_id))
+            .prefix("!")
+            .owners(owners))
+            .before(before)
+            .after(after)
+            .unrecognised_command(unknown_command)
+            .help(&MY_HELP)
+            .group(&CMDS_GROUP);
+
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot)
+        .framework(framework)
         //.application_id(application_id.parse::<u64>().unwrap())
+        .type_map_insert::<CommandCounter>(HashMap::default())
         .await
         .expect("Err creating client");
 
+    {
+        let mut data = client.data.write().await;
+        data.insert::<ShardManagerContainer>(Arc::clone(&client.shard_manager));
+    }
+
     Ok(client.into())
 }
+
+
+#[command]
+async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
+    info!("RECIEVED !ping COMMAND");
+    let start_time = Instant::now();
+    let response =  msg.channel_id.say(&ctx.http, "Pong!").await;
+    let end_time = Instant::now();
+    let latency = end_time.duration_since(start_time).as_millis();
+    if let Ok(mut response) = response {
+        response
+            .edit(&ctx.http, |m| {
+                m.content(format!("Pong! {}ms", latency))
+                    .allowed_mentions(|f| f.empty_parse());
+                m
+            })
+            .await
+            .unwrap();
+    }
+    Ok(())
+}
+
+#[command]
+async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
+    info!("RECIEVED !shard_ping COMMAND");
+    let data = ctx.data.read().await;
+
+    let shard_manager = match data.get::<ShardManagerContainer>() {
+        Some(v) => v,
+        None => {
+            msg.reply(ctx, "There was a problem getting the shard manager").await?;
+
+            return Ok(());
+        },
+    };
+
+    let manager = shard_manager.lock().await;
+    let runners = manager.runners.lock().await;
+    let runner = match runners.get(&ShardId(ctx.shard_id)) {
+        Some(runner) => runner,
+        None => {
+            msg.reply(ctx, "No shard found").await?;
+
+            return Ok(());
+        },
+    };
+
+    msg.reply(ctx, &format!("Pong! {:?}", runner.latency.unwrap())).await?;
+
+    Ok(())
+}
+
+#[group("Cmds")]
+#[commands(ping,shard_ping)]
+struct Cmds;
