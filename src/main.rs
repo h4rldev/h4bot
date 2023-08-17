@@ -16,6 +16,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
+use youtube_dl::YoutubeDl;
 
 const BOT_ID: UserId = UserId(871488289125838898);
 
@@ -179,7 +180,7 @@ async fn serenity(
 
 #[command]
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
-    info!("RECIEVED !ping COMMAND");
+    info!("Recieved !ping command");
     let start_time = Instant::now();
     let response = msg.reply(&ctx.http, "Pong!").await;
     let end_time = Instant::now();
@@ -199,7 +200,7 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
-    info!("RECIEVED !shard_ping COMMAND");
+    info!("Recieved !shard_ping command");
     let data = ctx.data.read().await;
 
     let shard_manager = match data.get::<ShardManagerContainer>() {
@@ -261,8 +262,7 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     } else {
         info!("User is not in a voice channel");
         msg.reply(&ctx.http, "You're not in a voice channel!")
-            .await
-            .expect("Couldn't reply to user!");
+            .await?;
     }
     Ok(())
 }
@@ -292,8 +292,7 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
                     &ctx.http,
                     format!("Left channel {}", author_channel_id.mention()),
                 )
-                .await
-                .expect("Couldn't reply to user!");
+                .await?;
                 let manager = songbird::get(&ctx)
                     .await
                     .expect("Songbird Voice client was not initialized.")
@@ -303,22 +302,53 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
         } else {
             info!("User is not in a voice channel");
             msg.reply(&ctx.http, "You're not in a voice channel!")
-                .await
-                .expect("Couldn't reply to user!");
+                .await?;
         }
     } else {
         info!("Not in a voice channel!");
-        msg.reply(&ctx.http, "I'm not in a voice channel!")
-            .await
-            .expect("Couldn't reply to user!");
+        msg.reply(&ctx.http, "I'm not in a voice channel!").await?;
     }
     Ok(())
 }
 
-#[group("latency")]
+#[command]
+async fn play(ctx: &Context, msg: &Message) -> CommandResult {
+    let video = YoutubeDl::new(&msg.content)
+        .socket_timeout("15")
+        .run()
+        .unwrap();
+    let video_title = video.into_single_video().unwrap().title;
+    msg.reply(&ctx.http, video_title).await?;
+    Ok(())
+}
+#[command]
+async fn stop(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.reply(&ctx.http, "lul").await?;
+    Ok(())
+}
+
+#[command]
+async fn skip(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.reply(&ctx.http, "lul").await?;
+    Ok(())
+}
+
+#[command]
+async fn queue(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.reply(&ctx.http, "lul").await?;
+    Ok(())
+}
+#[command]
+#[aliases("np")]
+async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.reply(&ctx.http, "lul").await?;
+    Ok(())
+}
+
+#[group("Latency")]
 #[commands(ping, shard_ping)]
 struct Latency;
 
 #[group("Music")]
-#[commands(join, leave)]
+#[commands(join, leave, play, stop, skip, queue, now_playing)]
 struct Music;
