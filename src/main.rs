@@ -283,8 +283,8 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
     };
 
 
-    if let Some(author_voice_state) = guild.voice_states.get(&msg.author.id) {
-        if let Some(bot_voice_state) = guild.voice_states.get(&BOT_ID) {
+    if let Some(bot_voice_state) = guild.voice_states.get(&BOT_ID) {
+        if let Some(author_voice_state) = guild.voice_states.get(&msg.author.id) {
             if let Some(bot_channel_id) = bot_voice_state.channel_id {
                 info!("h4bot is in voice channel with id {}", bot_channel_id.0);
             }
@@ -297,13 +297,13 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
                 let _handler = manager.leave(guild_id).await;
             }
         } else {
-            info!("Not in a voice channel!");
-            msg.reply(&ctx.http,"I'm not in a voice channel!").await
+            info!("User is not in a voice channel");
+            msg.reply(&ctx.http,"You're not in a voice channel!").await
                 .expect("Couldn't reply to user!");
         }
     } else {
-        info!("User is not in a voice channel");
-        msg.reply(&ctx.http,"You're not in a voice channel!").await
+        info!("Not in a voice channel!");
+        msg.reply(&ctx.http,"I'm not in a voice channel!").await
             .expect("Couldn't reply to user!");
     }
     Ok(())
