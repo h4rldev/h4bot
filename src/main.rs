@@ -1,40 +1,23 @@
 use anyhow::anyhow;
+use serenity::{
+    async_trait,
+    client::bridge::gateway::{ShardId, ShardManager},
+    framework::standard::{
+        help_commands, macros::*, Args, CommandGroup, CommandResult, DispatchError, HelpOptions,
+        StandardFramework,
+    },
+    http::Http,
+    model::{channel::Message, gateway::Ready, prelude::UserId},
+    prelude::*,
+};
 use songbird::SerenityInit;
 use std::{
-    time::Instant,
+    collections::{HashMap, HashSet},
     sync::Arc,
-    collections::{
-        HashMap,
-        HashSet
-    }
-};
-use serenity::{
-    http::Http,
-    prelude::*,
-    async_trait,
-    framework::standard::{
-        macros::*,
-        help_commands,
-        Args,
-        CommandGroup,
-        CommandResult,
-        DispatchError,
-        HelpOptions,
-        StandardFramework
-    },
-    model::{
-        prelude::UserId,
-        gateway::Ready,
-        channel::Message,
-    },
-    client::bridge::gateway::{
-        ShardId,
-        ShardManager
-    }
+    time::Instant,
 };
 
 const BOT_ID: UserId = UserId(871488289125838898);
-
 
 use shuttle_secrets::SecretStore;
 use tracing::info;
@@ -60,13 +43,18 @@ async fn unknown_command(_ctx: &Context, _msg: &Message, unknown_command_name: &
 
 #[hook]
 async fn before(ctx: &Context, msg: &Message, command_name: &str) -> bool {
-    println!("Got command '{}' by user '{}'", command_name, msg.author.name);
+    println!(
+        "Got command '{}' by user '{}'",
+        command_name, msg.author.name
+    );
 
     // Increment the number of times this command has been run once. If
     // the command's name does not exist in the counter, add a default
     // value of 0.
     let mut data = ctx.data.write().await;
-    let counter = data.get_mut::<CommandCounter>().expect("Expected CommandCounter in TypeMap.");
+    let counter = data
+        .get_mut::<CommandCounter>()
+        .expect("Expected CommandCounter in TypeMap.");
     let entry = counter.entry(command_name.to_string()).or_insert(0);
     *entry += 1;
 
@@ -88,7 +76,10 @@ async fn dispatch_error(ctx: &Context, msg: &Message, error: DispatchError, _com
         if info.is_first_try {
             let _ = msg
                 .channel_id
-                .say(&ctx.http, &format!("Try this again in {} seconds.", info.as_secs()))
+                .say(
+                    &ctx.http,
+                    &format!("Try this again in {} seconds.", info.as_secs()),
+                )
                 .await;
         }
     }
@@ -105,7 +96,7 @@ async fn get_owner(token: String) -> HashSet<UserId> {
                 owners.insert(info.owner.id);
             }
             owners
-        },
+        }
         Err(why) => panic!("Could not access application info: {:?}", why),
     }
 }
@@ -131,7 +122,6 @@ async fn my_help(
     Ok(())
 }
 
-
 #[async_trait]
 impl EventHandler for Bot {
     async fn ready(&self, _: Context, ready: Ready) {
@@ -155,19 +145,20 @@ async fn serenity(
     let intents = GatewayIntents::all();
 
     let framework = StandardFramework::new()
-        .configure(|config| config
-            .with_whitespace(true)
-            .allow_dm(false)
-            .on_mention(Some(BOT_ID))
-            .prefix("!")
-            .owners(owners))
-            .before(before)
-            .after(after)
-            .unrecognised_command(unknown_command)
-            .help(&MY_HELP)
-            .group(&LATENCY_GROUP)
-            .group(&MUSIC_GROUP);
-
+        .configure(|config| {
+            config
+                .with_whitespace(true)
+                .allow_dm(false)
+                .on_mention(Some(BOT_ID))
+                .prefix("!")
+                .owners(owners)
+        })
+        .before(before)
+        .after(after)
+        .unrecognised_command(unknown_command)
+        .help(&MY_HELP)
+        .group(&LATENCY_GROUP)
+        .group(&MUSIC_GROUP);
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot)
@@ -185,7 +176,6 @@ async fn serenity(
 
     Ok(client.into())
 }
-
 
 #[command]
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
@@ -215,10 +205,11 @@ async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
     let shard_manager = match data.get::<ShardManagerContainer>() {
         Some(v) => v,
         None => {
-            msg.reply(ctx, "There was a problem getting the shard manager").await?;
+            msg.reply(ctx, "There was a problem getting the shard manager")
+                .await?;
 
             return Ok(());
-        },
+        }
     };
 
     let manager = shard_manager.lock().await;
@@ -229,10 +220,11 @@ async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
             msg.reply(ctx, "No shard found").await?;
 
             return Ok(());
-        },
+        }
     };
 
-    msg.reply(ctx, &format!("Pong! {:?}", runner.latency.unwrap())).await?;
+    msg.reply(ctx, &format!("Pong! {:?}", runner.latency.unwrap()))
+        .await?;
 
     Ok(())
 }
@@ -254,15 +246,22 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     if let Some(voice_state) = guild.voice_states.get(&msg.author.id) {
         if let Some(channel_id) = voice_state.channel_id {
             info!("User is in voice channel with id {}", channel_id.0);
-            msg.reply(&ctx.http, format!("Joined channel {}", channel_id.mention())).await
-                .expect("Couldn't reply to user!");
-            let manager = songbird::get(&ctx).await
-            .expect("Songbird Voice client was not initialized.").clone();
+            msg.reply(
+                &ctx.http,
+                format!("Joined channel {}", channel_id.mention()),
+            )
+            .await
+            .expect("Couldn't reply to user!");
+            let manager = songbird::get(&ctx)
+                .await
+                .expect("Songbird Voice client was not initialized.")
+                .clone();
             let _handler = manager.join(guild_id, channel_id).await;
         }
     } else {
         info!("User is not in a voice channel");
-        msg.reply(&ctx.http,"You're not in a voice channel!").await
+        msg.reply(&ctx.http, "You're not in a voice channel!")
+            .await
             .expect("Couldn't reply to user!");
     }
     Ok(())
@@ -282,7 +281,6 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
         return Err(anyhow!("guild was not found").into());
     };
 
-
     if let Some(bot_voice_state) = guild.voice_states.get(&BOT_ID) {
         if let Some(author_voice_state) = guild.voice_states.get(&msg.author.id) {
             if let Some(bot_channel_id) = bot_voice_state.channel_id {
@@ -290,29 +288,37 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
             }
             if let Some(author_channel_id) = author_voice_state.channel_id {
                 info!("User is in voice channel with id {}", author_channel_id.0);
-                msg.reply(&ctx.http, format!("Left channel {}", author_channel_id.mention())).await
-                    .expect("Couldn't reply to user!");
-                let manager = songbird::get(&ctx).await
-                .expect("Songbird Voice client was not initialized.").clone();
+                msg.reply(
+                    &ctx.http,
+                    format!("Left channel {}", author_channel_id.mention()),
+                )
+                .await
+                .expect("Couldn't reply to user!");
+                let manager = songbird::get(&ctx)
+                    .await
+                    .expect("Songbird Voice client was not initialized.")
+                    .clone();
                 let _handler = manager.leave(guild_id).await;
             }
         } else {
             info!("User is not in a voice channel");
-            msg.reply(&ctx.http,"You're not in a voice channel!").await
+            msg.reply(&ctx.http, "You're not in a voice channel!")
+                .await
                 .expect("Couldn't reply to user!");
         }
     } else {
         info!("Not in a voice channel!");
-        msg.reply(&ctx.http,"I'm not in a voice channel!").await
+        msg.reply(&ctx.http, "I'm not in a voice channel!")
+            .await
             .expect("Couldn't reply to user!");
     }
     Ok(())
 }
 
 #[group("latency")]
-#[commands(ping,shard_ping)]
+#[commands(ping, shard_ping)]
 struct Latency;
 
 #[group("Music")]
-#[commands(join,leave)]
+#[commands(join, leave)]
 struct Music;
