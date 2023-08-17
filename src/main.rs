@@ -33,6 +33,9 @@ use serenity::{
     }
 };
 
+const BOT_ID: UserId = UserId(871488289125838898);
+
+
 use shuttle_secrets::SecretStore;
 use tracing::info;
 
@@ -91,6 +94,22 @@ async fn dispatch_error(ctx: &Context, msg: &Message, error: DispatchError, _com
     }
 }
 
+async fn get_owner(token: String) -> HashSet<UserId> {
+    let http = Http::new(&token);
+    match http.get_current_application_info().await {
+        Ok(info) => {
+            let mut owners = HashSet::new();
+            if let Some(team) = info.team {
+                owners.insert(team.owner_user_id);
+            } else {
+                owners.insert(info.owner.id);
+            }
+            owners
+        },
+        Err(why) => panic!("Could not access application info: {:?}", why),
+    }
+}
+
 #[help]
 #[individual_command_tip = "Hello! こんにちは！Hola! Bonjour! 您好! 안녕하세요~\n\n\
 If you want more information about a specific command, just pass the command as argument."]
@@ -130,24 +149,7 @@ async fn serenity(
     } else {
         return Err(anyhow!("'DISCORD_TOKEN' was not found").into());
     };
-
-    let http = Http::new(&token);
-
-    let (owners, bot_id) = match http.get_current_application_info().await {
-        Ok(info) => {
-            let mut owners = HashSet::new();
-            if let Some(team) = info.team {
-                owners.insert(team.owner_user_id);
-            } else {
-                owners.insert(info.owner.id);
-            }
-            match http.get_current_user().await {
-                Ok(bot_id) => (owners, bot_id.id),
-                Err(why) => panic!("Could not access the bot id: {:?}", why),
-            }
-        },
-        Err(why) => panic!("Could not access application info: {:?}", why),
-    };
+    let owners = get_owner(token.clone()).await;
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::all();
@@ -156,7 +158,7 @@ async fn serenity(
         .configure(|config| config
             .with_whitespace(true)
             .allow_dm(false)
-            .on_mention(Some(bot_id))
+            .on_mention(Some(BOT_ID))
             .prefix("!")
             .owners(owners))
             .before(before)
@@ -237,46 +239,72 @@ async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 async fn join(ctx: &Context, msg: &Message) -> CommandResult {
-    if let Some(guild_id) = msg.guild_id {
-        if let Some(guild) = guild_id.to_guild_cached(&ctx) {
-            if let Some(voice_state) = guild.voice_states.get(&msg.author.id) {
-                if let Some(channel_id) = voice_state.channel_id {
-                    info!("User is in voice channel with id {}", channel_id.0);
-                    msg.reply(&ctx.http, format!("Joined channel {}", channel_id.mention())).await
-                        .expect("Couldn't reply to user!");
-                    let manager = songbird::get(&ctx).await
-                    .expect("Songbird Voice client was not initialized.").clone();
-                    let _handler = manager.join(guild_id, channel_id).await;
-                }
-            } else {
-                info!("User is not in a voice channel");
-                msg.reply(&ctx.http,"You're not in a voice channel!").await
-                    .expect("Couldn't reply to user!");
-            }
+    let guild_id = if let Some(guild_id) = msg.guild_id {
+        guild_id
+    } else {
+        return Err(anyhow!("guild_id was not found").into());
+    };
+
+    let guild = if let Some(guild) = guild_id.to_guild_cached(&ctx) {
+        guild
+    } else {
+        return Err(anyhow!("guild was not found").into());
+    };
+
+    if let Some(voice_state) = guild.voice_states.get(&msg.author.id) {
+        if let Some(channel_id) = voice_state.channel_id {
+            info!("User is in voice channel with id {}", channel_id.0);
+            msg.reply(&ctx.http, format!("Joined channel {}", channel_id.mention())).await
+                .expect("Couldn't reply to user!");
+            let manager = songbird::get(&ctx).await
+            .expect("Songbird Voice client was not initialized.").clone();
+            let _handler = manager.join(guild_id, channel_id).await;
         }
+    } else {
+        info!("User is not in a voice channel");
+        msg.reply(&ctx.http,"You're not in a voice channel!").await
+            .expect("Couldn't reply to user!");
     }
     Ok(())
 }
 
 #[command]
 async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
-    if let Some(guild_id) = msg.guild_id {
-        if let Some(guild) = guild_id.to_guild_cached(&ctx) {
-            if let Some(voice_state) = guild.voice_states.get(&msg.author.id) {
-                if let Some(channel_id) = voice_state.channel_id {
-                    info!("User is in voice channel with id {}", channel_id.0);
-                    msg.reply(&ctx.http, format!("Left channel {}", channel_id.mention())).await
-                        .expect("Couldn't reply to user!");
-                    let manager = songbird::get(&ctx).await
-                    .expect("Songbird Voice client was not initialized.").clone();
-                    let _handler = manager.leave(guild_id).await;
-                }
-            } else {
-                info!("User is not in a voice channel");
-                msg.reply(&ctx.http,"You're not in a voice channel!").await
-                    .expect("Couldn't reply to user!");
+    let guild_id = if let Some(guild_id) = msg.guild_id {
+        guild_id
+    } else {
+        return Err(anyhow!("guild_id was not found").into());
+    };
+
+    let guild = if let Some(guild) = guild_id.to_guild_cached(&ctx) {
+        guild
+    } else {
+        return Err(anyhow!("guild was not found").into());
+    };
+
+
+    if let Some(author_voice_state) = guild.voice_states.get(&msg.author.id) {
+        if let Some(bot_voice_state) = guild.voice_states.get(&BOT_ID) {
+            if let Some(bot_channel_id) = bot_voice_state.channel_id {
+                info!("h4bot is in voice channel with id {}", bot_channel_id.0);
             }
+            if let Some(author_channel_id) = author_voice_state.channel_id {
+                info!("User is in voice channel with id {}", author_channel_id.0);
+                msg.reply(&ctx.http, format!("Left channel {}", author_channel_id.mention())).await
+                    .expect("Couldn't reply to user!");
+                let manager = songbird::get(&ctx).await
+                .expect("Songbird Voice client was not initialized.").clone();
+                let _handler = manager.leave(guild_id).await;
+            }
+        } else {
+            info!("Not in a voice channel!");
+            msg.reply(&ctx.http,"I'm not in a voice channel!").await
+                .expect("Couldn't reply to user!");
         }
+    } else {
+        info!("User is not in a voice channel");
+        msg.reply(&ctx.http,"You're not in a voice channel!").await
+            .expect("Couldn't reply to user!");
     }
     Ok(())
 }
