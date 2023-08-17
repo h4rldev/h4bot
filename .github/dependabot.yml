@@ -1,1 +1,10 @@
-
+version: 2
+updates:
+  - package-ecosystem: "Cargo"
+    # Files stored in repository root
+    directory: "/"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-name: "all"
+        dependency-type: "direct"
