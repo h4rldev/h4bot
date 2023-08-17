@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use songbird::SerenityInit;
 use std::{
     time::Instant,
     sync::Arc,
@@ -31,6 +32,7 @@ use serenity::{
         ShardManager
     }
 };
+
 use shuttle_secrets::SecretStore;
 use tracing::info;
 
@@ -161,12 +163,14 @@ async fn serenity(
             .after(after)
             .unrecognised_command(unknown_command)
             .help(&MY_HELP)
-            .group(&CMDS_GROUP);
+            .group(&LATENCY_GROUP)
+            .group(&MUSIC_GROUP);
 
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot)
         .framework(framework)
+        .register_songbird()
         //.application_id(application_id.parse::<u64>().unwrap())
         .type_map_insert::<CommandCounter>(HashMap::default())
         .await
@@ -231,6 +235,29 @@ async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-#[group("Cmds")]
+#[command]
+async fn join(ctx: &Context, msg: &Message) -> CommandResult {
+    if let Some(guild_id) = msg.guild_id {
+        if let Some(guild) = guild_id.to_guild_cached(&ctx) {
+            if let Some(voice_state) = guild.voice_states.get(&msg.author.id) {
+                if let Some(channel_id) = voice_state.channel_id {
+                    info!("User is in voice channel with id {}", channel_id.0);
+                    let manager = songbird::get(&ctx).await
+                    .expect("Songbird Voice client was not initialized.").clone();
+                    let _handler = manager.join(guild_id, channel_id).await;
+                } else {
+                    info!("User is not in a voice channel");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[group("latency")]
 #[commands(ping,shard_ping)]
-struct Cmds;
+struct Latency;
+
+#[group("Music")]
+#[commands(join)]
+struct Music;
