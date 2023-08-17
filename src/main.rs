@@ -247,11 +247,11 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
                     let manager = songbird::get(&ctx).await
                     .expect("Songbird Voice client was not initialized.").clone();
                     let _handler = manager.join(guild_id, channel_id).await;
-                } else {
-                    info!("User is not in a voice channel");
-                    msg.reply(&ctx.http,"You're not in a voice channel!").await
-                        .expect("Couldn't reply to user!");
                 }
+            } else {
+                info!("User is not in a voice channel");
+                msg.reply(&ctx.http,"You're not in a voice channel!").await
+                    .expect("Couldn't reply to user!");
             }
         }
     }
@@ -270,11 +270,11 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
                     let manager = songbird::get(&ctx).await
                     .expect("Songbird Voice client was not initialized.").clone();
                     let _handler = manager.leave(guild_id).await;
-                } else {
-                    info!("User is not in a voice channel");
-                    msg.reply(&ctx.http,"You're not in a voice channel!").await
-                        .expect("Couldn't reply to user!");
                 }
+            } else {
+                info!("User is not in a voice channel");
+                msg.reply(&ctx.http,"You're not in a voice channel!").await
+                    .expect("Couldn't reply to user!");
             }
         }
     }
