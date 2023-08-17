@@ -313,7 +313,7 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 async fn play(ctx: &Context, msg: &Message) -> CommandResult {
-    let video = YoutubeDl::new(&msg.content)
+    let video = YoutubeDl::new(&msg.content[6..])
         .socket_timeout("15")
         .run()
         .unwrap();
