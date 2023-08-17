@@ -189,7 +189,7 @@ async fn serenity(
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     info!("RECIEVED !ping COMMAND");
     let start_time = Instant::now();
-    let response =  msg.channel_id.say(&ctx.http, "Pong!").await;
+    let response = msg.reply(&ctx.http, "Pong!").await;
     let end_time = Instant::now();
     let latency = end_time.duration_since(start_time).as_millis();
     if let Ok(mut response) = response {
@@ -242,11 +242,38 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
             if let Some(voice_state) = guild.voice_states.get(&msg.author.id) {
                 if let Some(channel_id) = voice_state.channel_id {
                     info!("User is in voice channel with id {}", channel_id.0);
+                    msg.reply(&ctx.http, format!("Joined channel {}", channel_id.mention())).await
+                        .expect("Couldn't reply to user!");
                     let manager = songbird::get(&ctx).await
                     .expect("Songbird Voice client was not initialized.").clone();
                     let _handler = manager.join(guild_id, channel_id).await;
                 } else {
                     info!("User is not in a voice channel");
+                    msg.reply(&ctx.http,"You're not in a voice channel!").await
+                        .expect("Couldn't reply to user!");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[command]
+async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
+    if let Some(guild_id) = msg.guild_id {
+        if let Some(guild) = guild_id.to_guild_cached(&ctx) {
+            if let Some(voice_state) = guild.voice_states.get(&msg.author.id) {
+                if let Some(channel_id) = voice_state.channel_id {
+                    info!("User is in voice channel with id {}", channel_id.0);
+                    msg.reply(&ctx.http, format!("Left channel {}", channel_id.mention())).await
+                        .expect("Couldn't reply to user!");
+                    let manager = songbird::get(&ctx).await
+                    .expect("Songbird Voice client was not initialized.").clone();
+                    let _handler = manager.leave(guild_id).await;
+                } else {
+                    info!("User is not in a voice channel");
+                    msg.reply(&ctx.http,"You're not in a voice channel!").await
+                        .expect("Couldn't reply to user!");
                 }
             }
         }
@@ -259,5 +286,5 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
 struct Latency;
 
 #[group("Music")]
-#[commands(join)]
+#[commands(join,leave)]
 struct Music;
