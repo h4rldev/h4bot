@@ -1,5 +1,9 @@
 use anyhow::anyhow;
-use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use rand::{
+    rngs::{OsRng, StdRng},
+    seq::SliceRandom,
+    SeedableRng,
+};
 use rustube::{Id, VideoFetcher};
 use serenity::{
     async_trait,
@@ -9,7 +13,11 @@ use serenity::{
         StandardFramework,
     },
     http::Http,
-    model::{channel::Message, gateway::Ready, prelude::UserId},
+    model::{
+        channel::Message,
+        gateway::Ready,
+        prelude::{Mention, UserId},
+    },
     prelude::*,
 };
 use songbird::SerenityInit;
@@ -22,7 +30,7 @@ use std::{
 const BOT_ID: UserId = UserId(871488289125838898);
 
 use shuttle_secrets::SecretStore;
-use tracing::info;
+use tracing::{error, info};
 
 struct Bot;
 
@@ -383,27 +391,64 @@ struct Fun;
 
 #[command]
 async fn balls(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild_id = if let Some(guild_id) = msg.guild_id {
-        guild_id
-    } else {
-        return Err(anyhow!("guild_id was not found").into());
+    let guild_id = match msg.guild_id {
+        Some(guild_id) => guild_id,
+        None => return Ok(()),
     };
-    let nicknames = vec!["testicles", "balls", "nuts"];
+    let guild = guild_id.to_partial_guild(&ctx.http).await?;
+    let owner_id = guild.owner_id;
     let members = guild_id.members(&ctx.http, Some(1000), None).await?;
-
-    // Iterate over each member and change the member's nickname
+    let nicknames = vec![
+        "testicles",
+        "balls",
+        "nuts",
+        "tokhme",
+        "bollocks",
+        "cullions",
+        "rocks",
+        "gonads",
+    ];
+    let mut changed_nicknames: Vec<Mention> = vec![];
+    let mut rng = StdRng::from_rng(OsRng).expect("Hello");
+    let bot_nickname = match nicknames.choose(&mut rng) {
+        Some(nicknames) => nicknames,
+        None => "balls",
+    };
+    match guild.edit_nickname(&ctx.http, Some(bot_nickname)).await {
+        Ok(_) => info!("Changed nickname to {}", bot_nickname),
+        Err(err) => error!("Failed to change nickname: {:?}", err),
+    }
     for member in members {
-        let mut rng = StdRng::from_entropy();
         let new_nickname = match nicknames.choose(&mut rng) {
             Some(nicknames) => nicknames,
             None => "balls",
         };
-        guild_id
-            .edit_member(&ctx.http, member.user.id, |m| {
-                m.nickname(new_nickname.clone())
-            })
-            .await?;
-        msg.reply(&ctx.http, new_nickname.clone()).await?;
+        if member.user.id != BOT_ID && member.user.id != owner_id {
+            if let Err(why) = guild_id
+                .edit_member(&ctx.http, member.user.id, |m| {
+                    m.nickname(new_nickname.clone())
+                })
+                .await
+            {
+                msg.reply(&ctx.http, format!("Couldn't edit?: {:#}", why))
+                    .await?;
+            }
+            changed_nicknames.push(member.user.mention());
+        }
     }
+    let nickname_result = changed_nicknames.clone();
+
+    msg.reply(
+        &ctx.http,
+        format!(
+            "uhh, these people got ballsed: {} and me :)",
+            nickname_result
+                .iter()
+                .map(|mention| mention.to_string())
+                .collect::<String>()
+        ),
+    )
+    .await
+    .expect("Couldn't reply to user with ballsed people");
     Ok(())
 }
