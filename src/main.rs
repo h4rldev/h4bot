@@ -1,4 +1,6 @@
 use anyhow::anyhow;
+use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use rustube::{Id, VideoFetcher};
 use serenity::{
     async_trait,
     client::bridge::gateway::{ShardId, ShardManager},
@@ -16,7 +18,6 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use youtube_dl::YoutubeDl;
 
 const BOT_ID: UserId = UserId(871488289125838898);
 
@@ -44,7 +45,7 @@ async fn unknown_command(_ctx: &Context, _msg: &Message, unknown_command_name: &
 
 #[hook]
 async fn before(ctx: &Context, msg: &Message, command_name: &str) -> bool {
-    println!(
+    info!(
         "Got command '{}' by user '{}'",
         command_name, msg.author.name
     );
@@ -159,7 +160,8 @@ async fn serenity(
         .unrecognised_command(unknown_command)
         .help(&MY_HELP)
         .group(&LATENCY_GROUP)
-        .group(&MUSIC_GROUP);
+        .group(&MUSIC_GROUP)
+        .group(&FUN_GROUP);
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot)
@@ -177,6 +179,10 @@ async fn serenity(
 
     Ok(client.into())
 }
+
+#[group("Latency")]
+#[commands(ping, shard_ping)]
+struct Latency;
 
 #[command]
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
@@ -229,6 +235,10 @@ async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
 
     Ok(())
 }
+
+#[group("Music")]
+#[commands(join, leave, play, stop, skip, queue, now_playing)]
+struct Music;
 
 #[command]
 async fn join(ctx: &Context, msg: &Message) -> CommandResult {
@@ -312,16 +322,37 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 #[command]
-async fn play(ctx: &Context, msg: &Message) -> CommandResult {
-    let video = YoutubeDl::new(&msg.content[6..])
-        .socket_timeout("15")
-        .run()
-        .unwrap();
-    let video_title = video.into_single_video().unwrap().title;
-    msg.reply(&ctx.http, video_title).await?;
+#[aliases("p")]
+#[description = "Plays a song from a youtube url"]
+#[usage = "!play <youtube_url>"]
+async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    //https://www.youtube.com/watch?v=dQw4w9WgXcQ
+    let arg = args.single::<String>()?;
+    let video_id = arg.split("=").collect::<Vec<&str>>()[1];
+    match Id::from_str(video_id) {
+        Ok(video_id) => {
+            let fetcher = VideoFetcher::from_id(video_id.into_owned())?;
+            let video = fetcher.fetch().await?.descramble()?;
+            let video_info = video.video_details();
+
+            msg.reply(&ctx.http, format!("Video info: {:?}", video_info))
+                .await?;
+        }
+        Err(why) => {
+            msg.reply(
+                &ctx.http,
+                format!("Something occured or I couldn't find video\nError: {}", why),
+            )
+            .await?;
+        }
+    }
+    msg.reply(&ctx.http, "").await?;
     Ok(())
 }
+
 #[command]
+#[description = "Stops the media player"]
+#[usage = "!stop"]
 async fn stop(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(&ctx.http, "lul").await?;
     Ok(())
@@ -338,6 +369,7 @@ async fn queue(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(&ctx.http, "lul").await?;
     Ok(())
 }
+
 #[command]
 #[aliases("np")]
 async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
@@ -345,10 +377,33 @@ async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-#[group("Latency")]
-#[commands(ping, shard_ping)]
-struct Latency;
+#[group("Fun")]
+#[commands(balls)]
+struct Fun;
 
-#[group("Music")]
-#[commands(join, leave, play, stop, skip, queue, now_playing)]
-struct Music;
+#[command]
+async fn balls(ctx: &Context, msg: &Message) -> CommandResult {
+    let guild_id = if let Some(guild_id) = msg.guild_id {
+        guild_id
+    } else {
+        return Err(anyhow!("guild_id was not found").into());
+    };
+    let nicknames = vec!["testicles", "balls", "nuts"];
+    let members = guild_id.members(&ctx.http, Some(1000), None).await?;
+
+    // Iterate over each member and change the member's nickname
+    for member in members {
+        let mut rng = StdRng::from_entropy();
+        let new_nickname = match nicknames.choose(&mut rng) {
+            Some(nicknames) => nicknames,
+            None => "balls",
+        };
+        guild_id
+            .edit_member(&ctx.http, member.user.id, |m| {
+                m.nickname(new_nickname.clone())
+            })
+            .await?;
+        msg.reply(&ctx.http, new_nickname.clone()).await?;
+    }
+    Ok(())
+}

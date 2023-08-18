@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.74"
+anyhow = "1.0.75"
 shuttle-serenity = "0.24.0"
 shuttle-runtime = "0.24.0"
 serenity = { version = "0.11.6", default-features = true, features = [
@@ -16,8 +16,9 @@ serenity = { version = "0.11.6", default-features = true, features = [
   "standard_framework",
   "voice",
 ] }
-youtube_dl = { version = "0.8.1", features = ["downloader"] }
+rustube = { version = "0.6.0", features = ["tokio"] }
 songbird = { version = "0.3.2" }
 shuttle-secrets = "0.24.0"
-tokio = "1.31.0"
+tokio = "1.32.0"
 tracing = "0.1.37"
+rand = { git = "https://github.com/rust-random/rand.git", rev = "ff121cff61dfcb8c06a618b204ed93be727c4303" }
