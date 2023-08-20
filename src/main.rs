@@ -1,51 +1,39 @@
 use anyhow::anyhow;
-use futures::future::try_join_all;
-use rand::{
-    rngs::{OsRng, StdRng},
-    seq::SliceRandom,
-    SeedableRng,
-};
-use rustube::{Id, VideoFetcher};
 use serenity::{
     async_trait,
-    client::bridge::gateway::{ShardId, ShardManager},
     framework::standard::{
         help_commands, macros::*, Args, CommandGroup, CommandResult, DispatchError, HelpOptions,
         StandardFramework,
     },
     http::Http,
-    model::{
-        channel::Message,
-        gateway::Ready,
-        prelude::{Member, Mention, UserId},
-    },
+    model::{channel::Message, gateway::Ready, prelude::UserId},
     prelude::*,
 };
+use shuttle_secrets::SecretStore;
 use songbird::SerenityInit;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
-    time::Instant,
 };
-use tokio::task;
-
+use tracing::info;
+mod commands;
+use commands::{
+    fun::FUN_GROUP,
+    latency::{ShardManagerContainer, LATENCY_GROUP},
+    music::MUSIC_GROUP,
+};
 const BOT_ID: UserId = UserId(871488289125838898);
 
-use shuttle_secrets::SecretStore;
-use tracing::{error, info};
-
 struct Bot;
-
+struct CurrentUserId;
 struct CommandCounter;
 
 impl TypeMapKey for CommandCounter {
     type Value = HashMap<String, u64>;
 }
 
-struct ShardManagerContainer;
-
-impl TypeMapKey for ShardManagerContainer {
-    type Value = Arc<Mutex<ShardManager>>;
+impl TypeMapKey for CurrentUserId {
+    type Value = serenity::model::id::UserId;
 }
 
 #[hook]
@@ -185,432 +173,16 @@ async fn serenity(
     {
         let mut data = client.data.write().await;
         data.insert::<ShardManagerContainer>(Arc::clone(&client.shard_manager));
+        data.insert::<CurrentUserId>(
+            client
+                .cache_and_http
+                .http
+                .get_current_user()
+                .await
+                .expect("Failed to access current user")
+                .id,
+        );
     }
 
     Ok(client.into())
-}
-
-#[group("Latency")]
-#[commands(ping, shard_ping)]
-struct Latency;
-
-#[command]
-async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
-    info!("Recieved !ping command");
-    let start_time = Instant::now();
-    let response = msg.reply(&ctx.http, "Pong!").await;
-    let end_time = Instant::now();
-    let latency = end_time.duration_since(start_time).as_millis();
-    if let Ok(mut response) = response {
-        response
-            .edit(&ctx.http, |m| {
-                m.content(format!("Pong! {}ms", latency))
-                    .allowed_mentions(|f| f.empty_parse());
-                m
-            })
-            .await
-            .unwrap();
-    }
-    Ok(())
-}
-
-#[command]
-async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
-    info!("Recieved !shard_ping command");
-    let data = ctx.data.read().await;
-
-    let shard_manager = match data.get::<ShardManagerContainer>() {
-        Some(v) => v,
-        None => {
-            msg.reply(ctx, "There was a problem getting the shard manager")
-                .await?;
-
-            return Ok(());
-        }
-    };
-
-    let manager = shard_manager.lock().await;
-    let runners = manager.runners.lock().await;
-    let runner = match runners.get(&ShardId(ctx.shard_id)) {
-        Some(runner) => runner,
-        None => {
-            msg.reply(ctx, "No shard found").await?;
-
-            return Ok(());
-        }
-    };
-
-    msg.reply(ctx, &format!("Pong! {:?}", runner.latency.unwrap()))
-        .await?;
-
-    Ok(())
-}
-
-#[group("Music")]
-#[commands(join, leave, play, stop, skip, queue, now_playing)]
-struct Music;
-
-#[command]
-async fn join(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild_id = if let Some(guild_id) = msg.guild_id {
-        guild_id
-    } else {
-        return Err(anyhow!("guild_id was not found").into());
-    };
-
-    let guild = if let Some(guild) = guild_id.to_guild_cached(ctx) {
-        guild
-    } else {
-        return Err(anyhow!("guild was not found").into());
-    };
-
-    if let Some(voice_state) = guild.voice_states.get(&msg.author.id) {
-        if let Some(channel_id) = voice_state.channel_id {
-            info!("User is in voice channel with id {}", channel_id.0);
-            msg.reply(
-                &ctx.http,
-                format!("Joined channel {}", channel_id.mention()),
-            )
-            .await
-            .expect("Couldn't reply to user!");
-            let manager = songbird::get(ctx)
-                .await
-                .expect("Songbird Voice client was not initialized.")
-                .clone();
-            let _handler = manager.join(guild_id, channel_id).await;
-        }
-    } else {
-        info!("User is not in a voice channel");
-        msg.reply(&ctx.http, "You're not in a voice channel!")
-            .await?;
-    }
-    Ok(())
-}
-
-#[command]
-async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild_id = if let Some(guild_id) = msg.guild_id {
-        guild_id
-    } else {
-        return Err(anyhow!("guild_id was not found").into());
-    };
-
-    let guild = if let Some(guild) = guild_id.to_guild_cached(ctx) {
-        guild
-    } else {
-        return Err(anyhow!("guild was not found").into());
-    };
-
-    if let Some(bot_voice_state) = guild.voice_states.get(&BOT_ID) {
-        if let Some(author_voice_state) = guild.voice_states.get(&msg.author.id) {
-            if let Some(bot_channel_id) = bot_voice_state.channel_id {
-                info!("h4bot is in voice channel with id {}", bot_channel_id.0);
-            }
-            if let Some(author_channel_id) = author_voice_state.channel_id {
-                info!("User is in voice channel with id {}", author_channel_id.0);
-                msg.reply(
-                    &ctx.http,
-                    format!("Left channel {}", author_channel_id.mention()),
-                )
-                .await?;
-                let manager = songbird::get(ctx)
-                    .await
-                    .expect("Songbird Voice client was not initialized.")
-                    .clone();
-                let _handler = manager.leave(guild_id).await;
-            }
-        } else {
-            info!("User is not in a voice channel");
-            msg.reply(&ctx.http, "You're not in a voice channel!")
-                .await?;
-        }
-    } else {
-        info!("Not in a voice channel!");
-        msg.reply(&ctx.http, "I'm not in a voice channel!").await?;
-    }
-    Ok(())
-}
-
-#[command]
-#[aliases("p")]
-#[description = "Plays a song from a youtube url"]
-#[usage = "<youtube_url>"]
-async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    //https://www.youtube.com/watch?v=dQw4w9WgXcQ
-    let arg = args.single::<String>()?;
-    let video_id = arg.split('=').collect::<Vec<&str>>()[1];
-    match Id::from_str(video_id) {
-        Ok(video_id) => {
-            let fetcher = VideoFetcher::from_id(video_id.into_owned())?;
-            let video = fetcher.fetch().await?.descramble()?;
-            let video_info = video.video_details();
-
-            msg.reply(&ctx.http, format!("Video info: {:?}", video_info))
-                .await?;
-        }
-        Err(why) => {
-            msg.reply(
-                &ctx.http,
-                format!("Something occured or I couldn't find video\nError: {}", why),
-            )
-            .await?;
-        }
-    }
-    msg.reply(&ctx.http, "").await?;
-    Ok(())
-}
-
-#[command]
-#[description = "Stops the media player"]
-async fn stop(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(&ctx.http, "lul").await?;
-    Ok(())
-}
-
-#[command]
-async fn skip(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(&ctx.http, "lul").await?;
-    Ok(())
-}
-
-#[command]
-async fn queue(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(&ctx.http, "lul").await?;
-    Ok(())
-}
-
-#[command]
-#[aliases("np")]
-async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(&ctx.http, "lul").await?;
-    Ok(())
-}
-
-#[group("Fun")]
-#[commands(balls)]
-struct Fun;
-
-/// The `balls` function is a command that can be executed by a user in a Discord server. It does the funny.
-
-/// # Example Usage
-///
-/// // Execute the command with the "single" argument
-/// !balls single
-///
-/// // Execute the command with the "multiple" argument
-/// !balls multiple
-///
-/// // Execute the command with no arguments
-/// !balls
-
-/// # Inputs
-/// - `ctx`: The context object containing information about the bot's state and the current message.
-/// - `msg`: The message object representing the message that triggered the command.
-/// - `args`: The arguments provided by the user when executing the command.
-
-/// # Outputs
-/// - If the command is executed successfully, the function returns `Ok(())`.
-/// - If an error occurs during the execution of the command, the function returns an `Err` containing the error information.
-
-#[command]
-#[description = "funny"]
-#[usage = "[single|multiple|*empty*]"]
-async fn balls(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    let guild_id = match msg.guild_id {
-        Some(guild_id) => guild_id,
-        None => return Ok(()),
-    };
-    let guild = guild_id.to_partial_guild(&ctx.http).await?;
-    let members = guild_id
-        .members(&ctx.http, Some(1000), None)
-        .await?
-        .into_iter()
-        .filter(|member| !member.user.bot && member.user.id != guild.owner_id)
-        .collect::<Vec<Member>>();
-    const NICKNAMES: [&str; 8] = [
-        "testicles",
-        "balls",
-        "nuts",
-        "tokhme",
-        "bollocks",
-        "cullions",
-        "rocks",
-        "gonads",
-    ];
-    let msg_clone = msg.clone();
-    let ctx_clone = ctx.clone();
-    let mut rng = StdRng::from_rng(OsRng).expect("Welp that's awkward");
-    match args.single::<String>()?.as_str() {
-        "single" => {
-            let user = &members.choose(&mut rng).unwrap();
-            let new_nickname = match NICKNAMES.choose(&mut rng) {
-                Some(nickname) => *nickname,
-                None => "balls",
-            };
-            if let Err(why) = guild_id
-                .edit_member(&ctx.http, user.user.id, |m| {
-                    m.nickname(new_nickname.to_string())
-                })
-                .await
-            {
-                msg.reply(&ctx.http, format!("Couldn't edit?: {:#}", why))
-                    .await?;
-            }
-            msg.reply(
-                &ctx.http,
-                format!(
-                    "uhh, this peple got ballsed: {}!1!!11!!!1",
-                    user.user.mention()
-                ),
-            )
-            .await?;
-            return Ok(());
-        }
-        "multiple" => {
-            let amount = args.single::<usize>()?;
-            if amount == 1 {
-                msg.reply(
-                    &ctx.http,
-                    "use `!balls single` instead of `!balls multiple 1` :)",
-                )
-                .await?;
-                return Ok(());
-            } else if amount > members.len() {
-                msg.reply(
-                    &ctx.http,
-                    format!("use `!balls` instead of `!balls multiple {}` :)", amount),
-                )
-                .await?;
-                return Ok(());
-            }
-
-            let mut rng = StdRng::from_rng(OsRng).expect("Welp that's awkward");
-            let nicknames: Arc<Mutex<Vec<&'static str>>> = Arc::new(Mutex::new(NICKNAMES.to_vec()));
-            let users: Vec<Arc<Member>> = members
-                .choose_multiple(&mut rng, amount)
-                .map(|member| Arc::new(member.clone()))
-                .collect();
-            let changed_nicknames: Arc<Mutex<Vec<Mention>>> = Arc::new(Mutex::new(Vec::new()));
-            let futures = users.into_iter().map(|user| {
-                let user = Arc::clone(&user);
-                let msg = msg_clone.clone();
-                let ctx = ctx_clone.clone();
-                let nicknames = Arc::clone(&nicknames);
-                let changed_nicknames = Arc::clone(&changed_nicknames);
-                task::spawn(async move {
-                    // Perform your operation here
-                    let mut rng = StdRng::from_rng(OsRng).expect("Welp that's awkward");
-                    let mut nicknames = nicknames.lock().await;
-                    let new_nickname = match nicknames.choose_mut(&mut rng) {
-                        Some(nickname) => *nickname,
-                        None => "balls",
-                    };
-                    if let Err(why) = guild_id
-                        .edit_member(&ctx.http, user.user.id, |m| {
-                            m.nickname(new_nickname.to_string())
-                        })
-                        .await
-                    {
-                        msg.reply(&ctx.http, format!("Couldn't edit?: {:#}", why))
-                            .await
-                            .expect("Welp, you goofed up");
-                    } else {
-                        let mut changed_nicknames = changed_nicknames.lock().await;
-                        changed_nicknames.push(user.user.mention());
-                    }
-                })
-            });
-            let results = try_join_all(futures).await;
-            match results {
-                Ok(_) => info!("Successfully changed the name of multiple people!"),
-                Err(why) => error!("Task failed! {}", why),
-            };
-
-            msg.reply(
-                &ctx.http,
-                format!(
-                    "uhh, these people got ballsed: {}!1!!11!!!1",
-                    changed_nicknames
-                        .lock()
-                        .await
-                        .iter()
-                        .map(|mention| mention.to_string())
-                        .collect::<String>()
-                ),
-            )
-            .await
-            .expect("Couldn't reply to user with ballsed people");
-            Ok(())
-        }
-        _ => {
-            let mut rng = StdRng::from_rng(OsRng).expect("Hello");
-            let bot_nickname = match NICKNAMES.choose(&mut rng) {
-                Some(nickname) => *nickname,
-                None => "balls",
-            };
-            match guild.edit_nickname(&ctx.http, Some(bot_nickname)).await {
-                Ok(_) => info!("Changed nickname to {}", bot_nickname),
-                Err(err) => error!("Failed to change nickname: {:?}", err),
-            }
-            let nicknames: Arc<Mutex<Vec<&'static str>>> = Arc::new(Mutex::new(NICKNAMES.to_vec()));
-
-            let users: Vec<Arc<Member>> = members
-                .iter()
-                .map(|member| Arc::new(member.clone()))
-                .collect();
-            let changed_nicknames: Arc<Mutex<Vec<Mention>>> = Arc::new(Mutex::new(Vec::new()));
-            let futures = users.into_iter().map(|user| {
-                let user = Arc::clone(&user);
-                let msg = msg_clone.clone();
-                let ctx = ctx_clone.clone();
-                let nicknames = Arc::clone(&nicknames);
-                let changed_nicknames = Arc::clone(&changed_nicknames);
-                task::spawn(async move {
-                    // Perform your operation here
-                    let mut rng = StdRng::from_rng(OsRng).expect("Hello");
-                    let mut nicknames = nicknames.lock().await;
-                    let new_nickname = match nicknames.choose_mut(&mut rng) {
-                        Some(nickname) => *nickname,
-                        None => "balls",
-                    };
-
-                    if let Err(why) = guild_id
-                        .edit_member(&ctx.http, user.user.id, |m| {
-                            m.nickname(new_nickname.to_string())
-                        })
-                        .await
-                    {
-                        msg.reply(&ctx.http, format!("Couldn't edit?: {:#}", why))
-                            .await
-                            .expect("Welp, you goofed up");
-                    } else {
-                        let mut changed_nicknames = changed_nicknames.lock().await;
-                        changed_nicknames.push(user.user.mention());
-                    }
-                })
-            });
-            let results = try_join_all(futures).await;
-            match results {
-                Ok(_) => info!("Successfully changed the name of multiple people!"),
-                Err(why) => error!("Task failed! {}", why),
-            };
-            let bot_mention = ctx.cache.current_user().mention();
-            msg.reply(
-                &ctx.http,
-                format!(
-                    "uhh, these people got ballsed: {}{}!1!!11!!!1",
-                    bot_mention,
-                    changed_nicknames
-                        .lock()
-                        .await
-                        .iter()
-                        .map(|mention| mention.to_string())
-                        .collect::<String>()
-                ),
-            )
-            .await
-            .expect("Couldn't reply to user with ballsed people");
-            Ok(())
-        }
-    }
 }

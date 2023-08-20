@@ -3,6 +3,13 @@ name = "h4bot"
 version = "0.1.0"
 edition = "2021"
 
+[commands]
+path = "./commands/*"
+
+[[bin]]
+name = "h4bot"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.75"
 shuttle-serenity = "0.24.0"
