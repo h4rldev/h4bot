@@ -258,7 +258,7 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
         return Err(anyhow!("guild_id was not found").into());
     };
 
-    let guild = if let Some(guild) = guild_id.to_guild_cached(&ctx) {
+    let guild = if let Some(guild) = guild_id.to_guild_cached(ctx) {
         guild
     } else {
         return Err(anyhow!("guild was not found").into());
@@ -273,7 +273,7 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
             )
             .await
             .expect("Couldn't reply to user!");
-            let manager = songbird::get(&ctx)
+            let manager = songbird::get(ctx)
                 .await
                 .expect("Songbird Voice client was not initialized.")
                 .clone();
@@ -295,7 +295,7 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
         return Err(anyhow!("guild_id was not found").into());
     };
 
-    let guild = if let Some(guild) = guild_id.to_guild_cached(&ctx) {
+    let guild = if let Some(guild) = guild_id.to_guild_cached(ctx) {
         guild
     } else {
         return Err(anyhow!("guild was not found").into());
@@ -313,7 +313,7 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
                     format!("Left channel {}", author_channel_id.mention()),
                 )
                 .await?;
-                let manager = songbird::get(&ctx)
+                let manager = songbird::get(ctx)
                     .await
                     .expect("Songbird Voice client was not initialized.")
                     .clone();
@@ -338,7 +338,7 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     //https://www.youtube.com/watch?v=dQw4w9WgXcQ
     let arg = args.single::<String>()?;
-    let video_id = arg.split("=").collect::<Vec<&str>>()[1];
+    let video_id = arg.split('=').collect::<Vec<&str>>()[1];
     match Id::from_str(video_id) {
         Ok(video_id) => {
             let fetcher = VideoFetcher::from_id(video_id.into_owned())?;
@@ -472,6 +472,13 @@ async fn balls(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 msg.reply(
                     &ctx.http,
                     "use `!balls single` instead of `!balls multiple 1` :)",
+                )
+                .await?;
+                return Ok(());
+            } else if amount > members.len() {
+                msg.reply(
+                    &ctx.http,
+                    format!("use `!balls` instead of `!balls multiple {}` :)", amount),
                 )
                 .await?;
                 return Ok(());
