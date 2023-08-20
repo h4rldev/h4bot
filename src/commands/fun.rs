@@ -21,31 +21,21 @@ use tracing::{error, info};
 #[commands(balls)]
 struct Fun;
 
-/// The `balls` function is a command that can be executed by a user in a Discord server. It does the funny.
+/// funny.
 
-/// # Example Usage
-///
+/// ### Example Usage
+/// ```rust
 /// // Execute the command with the "single" argument
 /// !balls single
 ///
-/// // Execute the command with the "multiple" argument
+/// //Execute the command with the "multiple" argument
 /// !balls multiple
 ///
 /// // Execute the command with no arguments
 /// !balls
-
-/// # Inputs
-/// - `ctx`: The context object containing information about the bot's state and the current message.
-/// - `msg`: The message object representing the message that triggered the command.
-/// - `args`: The arguments provided by the user when executing the command.
-
-/// # Outputs
-/// - If the command is executed successfully, the function returns `Ok(())`.
-/// - If an error occurs during the execution of the command, the function returns an `Err` containing the error information.
+/// ```
 
 #[command]
-#[description = "funny"]
-#[usage = "[single|multiple|*empty*]"]
 async fn balls(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let guild_id = match msg.guild_id {
         Some(guild_id) => guild_id,

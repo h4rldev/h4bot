@@ -17,6 +17,13 @@ impl TypeMapKey for ShardManagerContainer {
 #[commands(ping, shard_ping)]
 struct Latency;
 
+/// Checks "ping" using `std::time::Instant`.
+
+/// ### Example Usage
+/// ```rust
+/// !ping
+/// ```
+
 #[command]
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     info!("Recieved !ping command");
@@ -36,6 +43,13 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     }
     Ok(())
 }
+
+/// Checks "ping" using `ShardManager`.
+
+/// ### Example Usage
+/// ```rust
+/// !shard_ping
+/// ```
 
 #[command]
 async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {

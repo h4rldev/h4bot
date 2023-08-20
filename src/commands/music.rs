@@ -12,6 +12,14 @@ use tracing::info;
 #[commands(join, leave, play, stop, skip, queue, now_playing)]
 struct Music;
 
+/// Makes h4bot join the channel you're in.
+
+/// ### Example Usage
+/// ```rust
+/// // Make the bot join the channel
+/// !join
+/// ```
+
 #[command]
 async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     let guild_id = if let Some(guild_id) = msg.guild_id {
@@ -48,6 +56,13 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     }
     Ok(())
 }
+
+/// Makes h4bot leave the channel you're in.
+
+/// ### Example Usage
+/// ```rust
+/// !leave
+/// ```
 
 #[command]
 async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
@@ -102,10 +117,18 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+/// Makes h4bot join the channel if not in a channel and play a song,
+/// queue up the song
+/// or play the song in the currently joined channel.
+/// Work in progress, currently does nothing!!!!!!
+
+/// ### Example Usage
+/// ```rust
+/// !p <youtube-url> | !play <youtube-url>
+/// ```
+
 #[command]
 #[aliases("p")]
-#[description = "Plays a song from a youtube url"]
-#[usage = "<youtube_url>"]
 async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     //https://www.youtube.com/watch?v=dQw4w9WgXcQ
     let arg = args.single::<String>()?;
@@ -131,12 +154,28 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     Ok(())
 }
 
+/// Makes h4bot stop the song in the channel you're in and leave.
+/// Currently does nothing!
+
+/// ### Example Usage
+/// ```rust
+/// !stop
+/// ```
+
 #[command]
-#[description = "Stops the media player"]
 async fn stop(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(&ctx.http, "lul").await?;
     Ok(())
 }
+
+/// Makes h4bot skip the song.
+/// Will probably be a voting command.
+/// Currently does nothing!
+
+/// ### Example Usage
+/// ```rust
+/// !skip
+/// ```
 
 #[command]
 async fn skip(ctx: &Context, msg: &Message) -> CommandResult {
@@ -144,11 +183,28 @@ async fn skip(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+/// Shows the queue
+/// Currently does nothing!
+
+/// ### Example Usage
+/// ```rust
+/// !q | !queue
+/// ```
+
 #[command]
+#[aliases(q)]
 async fn queue(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(&ctx.http, "lul").await?;
     Ok(())
 }
+
+/// Shows the currently playing song
+/// Currently does nothing!
+
+/// ### Example Usage
+/// ```rust
+/// !np | !now_playing
+/// ```
 
 #[command]
 #[aliases("np")]
