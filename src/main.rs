@@ -334,7 +334,7 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 #[command]
 #[aliases("p")]
 #[description = "Plays a song from a youtube url"]
-#[usage = "!play <youtube_url>"]
+#[usage = "<youtube_url>"]
 async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     //https://www.youtube.com/watch?v=dQw4w9WgXcQ
     let arg = args.single::<String>()?;
@@ -362,7 +362,6 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
 #[command]
 #[description = "Stops the media player"]
-#[usage = "!stop"]
 async fn stop(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(&ctx.http, "lul").await?;
     Ok(())
@@ -393,7 +392,7 @@ struct Fun;
 
 #[command]
 #[description = "funny"]
-#[usage = "!balls [single|multiple|*empty*]"]
+#[usage = "[single|multiple|*empty*]"]
 async fn balls(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let guild_id = match msg.guild_id {
         Some(guild_id) => guild_id,
