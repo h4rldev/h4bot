@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use futures::future::try_join_all;
 use rand::{
     rngs::{OsRng, StdRng},
     seq::SliceRandom,
@@ -16,7 +17,7 @@ use serenity::{
     model::{
         channel::Message,
         gateway::Ready,
-        prelude::{Mention, UserId},
+        prelude::{Member, Mention, UserId},
     },
     prelude::*,
 };
@@ -26,6 +27,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
+use tokio::task;
 
 const BOT_ID: UserId = UserId(871488289125838898);
 
@@ -390,7 +392,9 @@ async fn now_playing(ctx: &Context, msg: &Message) -> CommandResult {
 struct Fun;
 
 #[command]
-async fn balls(ctx: &Context, msg: &Message) -> CommandResult {
+#[description = "funny"]
+#[usage = "!balls [single|multiple|*empty*]"]
+async fn balls(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let guild_id = match msg.guild_id {
         Some(guild_id) => guild_id,
         None => return Ok(()),
@@ -408,16 +412,191 @@ async fn balls(ctx: &Context, msg: &Message) -> CommandResult {
         "rocks",
         "gonads",
     ];
-    let mut changed_nicknames: Vec<Mention> = vec![];
-    let mut rng = StdRng::from_rng(OsRng).expect("Hello");
-    let bot_nickname = match nicknames.choose(&mut rng) {
+    let nicknames_clone = nicknames.clone();
+    let msg_clone = msg.clone();
+    let ctx_clone = ctx.clone();
+    let mut rng = StdRng::from_rng(OsRng).expect("Welp that's awkward");
+    /*let bot_nickname = match nicknames.choose(&mut rng) {
         Some(nicknames) => nicknames,
         None => "balls",
-    };
-    match guild.edit_nickname(&ctx.http, Some(bot_nickname)).await {
+    };*/
+    match args.rest() {
+        "single" => {
+            let user = &members.choose(&mut rng).unwrap();
+            match user.user.id {
+                id if id == BOT_ID || id == owner_id => {}
+                _ => {
+                    let new_nickname = match nicknames.choose(&mut rng) {
+                        Some(nicknames) => nicknames,
+                        None => "balls",
+                    };
+                    if let Err(why) = guild_id
+                        .edit_member(&ctx.http, user.user.id, |m| {
+                            m.nickname(new_nickname.clone())
+                        })
+                        .await
+                    {
+                        msg.reply(&ctx.http, format!("Couldn't edit?: {:#}", why))
+                            .await?;
+                    }
+                    msg.reply(
+                        &ctx.http,
+                        format!(
+                            "uhh, this peple got ballsed: {}!1!!11!!!1",
+                            user.user.mention()
+                        ),
+                    )
+                    .await?;
+                }
+            };
+            return Ok(());
+        }
+        "multiple" => {
+            let mut rng = StdRng::from_rng(OsRng).expect("Welp that's awkward");
+            let nicknames: Arc<Mutex<Vec<&'static str>>> =
+                Arc::new(Mutex::new(nicknames_clone.clone()));
+
+            let users: Vec<Arc<Member>> = members
+                .choose_multiple(&mut rng, 6)
+                .map(|member| Arc::new(member.clone()))
+                .collect();
+            let changed_nicknames: Arc<Mutex<Vec<Mention>>> = Arc::new(Mutex::new(Vec::new()));
+            let futures = users.into_iter().map(|user| {
+                let user = Arc::clone(&user);
+                let msg = msg_clone.clone();
+                let ctx = ctx_clone.clone();
+                let nicknames = Arc::clone(&nicknames);
+                let changed_nicknames = Arc::clone(&changed_nicknames);
+                task::spawn(async move {
+                    // Perform your operation here
+                    let mut rng = StdRng::from_rng(OsRng).expect("Welp that's awkward");
+                    let mut nicknames = nicknames.lock().await;
+                    let new_nickname = match nicknames.choose_mut(&mut rng) {
+                        Some(nickname) => nickname.to_string(),
+                        None => String::from("balls"),
+                    };
+                    match user.user.id {
+                        id if id == BOT_ID || id == owner_id => {}
+                        _ => {
+                            if let Err(why) = guild_id
+                                .edit_member(&ctx.http, user.user.id, |m| {
+                                    m.nickname(new_nickname.clone())
+                                })
+                                .await
+                            {
+                                msg.reply(&ctx.http, format!("Couldn't edit?: {:#}", why))
+                                    .await
+                                    .expect("Welp, you goofed up");
+                            } else {
+                                let mut changed_nicknames = changed_nicknames.lock().await;
+                                changed_nicknames.push(user.user.mention());
+                            }
+                        }
+                    }
+                })
+            });
+            let results = try_join_all(futures).await;
+            match results {
+                Ok(_) => info!("Successfully changed the name of multiple people!"),
+                Err(why) => error!("Task failed! {}", why),
+            };
+
+            msg.reply(
+                &ctx.http,
+                format!(
+                    "uhh, these people got ballsed: me{}!1!!11!!!1",
+                    changed_nicknames
+                        .lock()
+                        .await
+                        .iter()
+                        .map(|mention| mention.to_string())
+                        .collect::<String>()
+                ),
+            )
+            .await
+            .expect("Couldn't reply to user with ballsed people");
+            Ok(())
+        }
+        _ => {
+            let mut rng = StdRng::from_rng(OsRng).expect("Hello");
+            let bot_nickname = match nicknames.choose(&mut rng) {
+                Some(nicknames) => nicknames,
+                None => "balls",
+            };
+            match guild.edit_nickname(&ctx.http, Some(bot_nickname)).await {
+                Ok(_) => info!("Changed nickname to {}", bot_nickname),
+                Err(err) => error!("Failed to change nickname: {:?}", err),
+            }
+            let nicknames: Arc<Mutex<Vec<&'static str>>> =
+                Arc::new(Mutex::new(nicknames_clone.clone()));
+
+            let users: Vec<Arc<Member>> = members
+                .iter()
+                .map(|member| Arc::new(member.clone()))
+                .collect();
+            let changed_nicknames: Arc<Mutex<Vec<Mention>>> = Arc::new(Mutex::new(Vec::new()));
+            let futures = users.into_iter().map(|user| {
+                let user = Arc::clone(&user);
+                let msg = msg_clone.clone();
+                let ctx = ctx_clone.clone();
+                let nicknames = Arc::clone(&nicknames);
+                let changed_nicknames = Arc::clone(&changed_nicknames);
+                task::spawn(async move {
+                    // Perform your operation here
+                    let mut rng = StdRng::from_rng(OsRng).expect("Hello");
+                    let mut nicknames = nicknames.lock().await;
+                    let new_nickname = match nicknames.choose_mut(&mut rng) {
+                        Some(nickname) => nickname.to_string(),
+                        None => String::from("balls"),
+                    };
+                    match user.user.id {
+                        id if id == BOT_ID || id == owner_id => {}
+                        _ => {
+                            if let Err(why) = guild_id
+                                .edit_member(&ctx.http, user.user.id, |m| {
+                                    m.nickname(new_nickname.clone())
+                                })
+                                .await
+                            {
+                                msg.reply(&ctx.http, format!("Couldn't edit?: {:#}", why))
+                                    .await
+                                    .expect("Welp, you goofed up");
+                            } else {
+                                let mut changed_nicknames = changed_nicknames.lock().await;
+                                changed_nicknames.push(user.user.mention());
+                            }
+                        }
+                    }
+                })
+            });
+            let results = try_join_all(futures).await;
+            match results {
+                Ok(_) => info!("Successfully changed the name of multiple people!"),
+                Err(why) => error!("Task failed! {}", why),
+            };
+
+            msg.reply(
+                &ctx.http,
+                format!(
+                    "uhh, these people got ballsed: {}!1!!11!!!1",
+                    changed_nicknames
+                        .lock()
+                        .await
+                        .iter()
+                        .map(|mention| mention.to_string())
+                        .collect::<String>()
+                ),
+            )
+            .await
+            .expect("Couldn't reply to user with ballsed people");
+            Ok(())
+        }
+    }
+    /*match guild.edit_nickname(&ctx.http, Some(bot_nickname)).await {
         Ok(_) => info!("Changed nickname to {}", bot_nickname),
         Err(err) => error!("Failed to change nickname: {:?}", err),
     }
+    let members = guild_id.members(&ctx.http, Some(1000), None).await?;
     for member in members {
         let new_nickname = match nicknames.choose(&mut rng) {
             Some(nicknames) => nicknames,
@@ -436,19 +615,5 @@ async fn balls(ctx: &Context, msg: &Message) -> CommandResult {
             changed_nicknames.push(member.user.mention());
         }
     }
-    let nickname_result = changed_nicknames.clone();
-
-    msg.reply(
-        &ctx.http,
-        format!(
-            "uhh, these people got ballsed: {} and me :)",
-            nickname_result
-                .iter()
-                .map(|mention| mention.to_string())
-                .collect::<String>()
-        ),
-    )
-    .await
-    .expect("Couldn't reply to user with ballsed people");
-    Ok(())
+    Ok(())*/
 }
