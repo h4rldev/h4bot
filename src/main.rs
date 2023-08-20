@@ -592,28 +592,4 @@ async fn balls(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             Ok(())
         }
     }
-    /*match guild.edit_nickname(&ctx.http, Some(bot_nickname)).await {
-        Ok(_) => info!("Changed nickname to {}", bot_nickname),
-        Err(err) => error!("Failed to change nickname: {:?}", err),
-    }
-    let members = guild_id.members(&ctx.http, Some(1000), None).await?;
-    for member in members {
-        let new_nickname = match nicknames.choose(&mut rng) {
-            Some(nicknames) => nicknames,
-            None => "balls",
-        };
-        if member.user.id != BOT_ID && member.user.id != owner_id {
-            if let Err(why) = guild_id
-                .edit_member(&ctx.http, member.user.id, |m| {
-                    m.nickname(new_nickname.clone())
-                })
-                .await
-            {
-                msg.reply(&ctx.http, format!("Couldn't edit?: {:#}", why))
-                    .await?;
-            }
-            changed_nicknames.push(member.user.mention());
-        }
-    }
-    Ok(())*/
 }
