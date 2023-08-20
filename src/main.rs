@@ -503,7 +503,7 @@ async fn balls(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             msg.reply(
                 &ctx.http,
                 format!(
-                    "uhh, these people got ballsed: me{}!1!!11!!!1",
+                    "uhh, these people got ballsed: {}!1!!11!!!1",
                     changed_nicknames
                         .lock()
                         .await
@@ -573,11 +573,12 @@ async fn balls(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
                 Ok(_) => info!("Successfully changed the name of multiple people!"),
                 Err(why) => error!("Task failed! {}", why),
             };
-
+            let bot_mention = ctx.cache.current_user().mention();
             msg.reply(
                 &ctx.http,
                 format!(
-                    "uhh, these people got ballsed: {}!1!!11!!!1",
+                    "uhh, these people got ballsed: {}{}!1!!11!!!1",
+                    bot_mention,
                     changed_nicknames
                         .lock()
                         .await
