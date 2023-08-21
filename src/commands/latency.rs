@@ -14,6 +14,7 @@ impl TypeMapKey for ShardManagerContainer {
 }
 
 #[group("Latency")]
+#[only_in(guild)]
 #[commands(ping, shard_ping)]
 struct Latency;
 
@@ -25,6 +26,7 @@ struct Latency;
 /// ```
 
 #[command]
+
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     info!("Recieved !ping command");
     let start_time = Instant::now();
@@ -52,6 +54,7 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 /// ```
 
 #[command]
+#[only_in(guild)]
 async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
     info!("Recieved !shard_ping command");
     let data = ctx.data.read().await;

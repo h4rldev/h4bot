@@ -18,6 +18,7 @@ use tokio::task;
 use tracing::{error, info};
 
 #[group("Fun")]
+#[only_in(guild)]
 #[commands(balls)]
 struct Fun;
 

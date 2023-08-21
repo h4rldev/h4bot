@@ -9,6 +9,7 @@ use serenity::{
 use tracing::info;
 
 #[group("Music")]
+#[only_in(guild)]
 #[commands(join, leave, play, stop, skip, queue, now_playing)]
 struct Music;
 
