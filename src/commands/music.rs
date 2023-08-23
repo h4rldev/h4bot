@@ -1,12 +1,18 @@
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
 use crate::CurrentUserId;
 use anyhow::anyhow;
-use rustube::{Id, VideoFetcher};
+use regex::Regex;
+use rustube::{Id, Video};
 use serenity::{
     framework::standard::{macros::*, Args, CommandResult},
     model::channel::Message,
     prelude::*,
 };
-use tracing::info;
+use songbird::input::Restartable;
 
 #[group("Music")]
 #[only_in(guild)]
@@ -21,40 +27,102 @@ struct Music;
 /// !join
 /// ```
 
+async fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir).ok()? {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(stem) = path.file_stem() {
+                    if stem == name {
+                        return Some(path.to_path_buf());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+async fn handle_url(arg: &String) -> Result<Restartable, Box<dyn std::error::Error>> {
+    let re = Regex::new(r"v=([a-zA-Z0-9_-]+)").expect("Invalid Regex!");
+    match arg.find("https://www.youtube.com") {
+        Some(_) => {
+            let video_id = if let Some(captures) = re.captures(&arg) {
+                match captures.get(1) {
+                    Some(id) => id.as_str(),
+                    None => {
+                        return Err(anyhow!("Something went wrong getting the video id").into());
+                    }
+                }
+            } else {
+                return Err(anyhow!("Invalid URL").into());
+            };
+            match Id::from_str(video_id) {
+                Ok(id) => {
+                    let video = Video::from_id(id.into_owned()).await?;
+                    let dir = Path::new("./music");
+                    let file = find_file(dir, video_id).await.unwrap();
+                    let downloaded_video = if fs::metadata(file.clone()).is_err() {
+                        video
+                            .best_audio()
+                            .unwrap()
+                            .download_to_dir("./music")
+                            .await?
+                    } else {
+                        file
+                    };
+                    let audio = Restartable::ffmpeg(downloaded_video, true)
+                        .await
+                        .expect("Error creating input");
+                    return Ok(audio);
+                }
+                Err(_) => {
+                    let url = arg.to_owned();
+                    let audio = Restartable::ffmpeg(url, true)
+                        .await
+                        .expect("Error creating input");
+                    return Ok(audio);
+                }
+            }
+        }
+        None => {
+            return Err(anyhow!("Invalid URL").into());
+        }
+    }
+}
+
 #[command]
 async fn join(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild_id = if let Some(guild_id) = msg.guild_id {
-        guild_id
-    } else {
-        return Err(anyhow!("guild_id was not found").into());
-    };
-
-    let guild = if let Some(guild) = guild_id.to_guild_cached(ctx) {
+    let guild = if let Some(guild) = msg.guild(&ctx.cache) {
         guild
     } else {
         return Err(anyhow!("guild was not found").into());
     };
 
-    if let Some(voice_state) = guild.voice_states.get(&msg.author.id) {
-        if let Some(channel_id) = voice_state.channel_id {
-            info!("User is in voice channel with id {}", channel_id.0);
-            msg.reply(
-                &ctx.http,
-                format!("Joined channel {}", channel_id.mention()),
-            )
-            .await
-            .expect("Couldn't reply to user!");
-            let manager = songbird::get(ctx)
-                .await
-                .expect("Songbird Voice client was not initialized.")
-                .clone();
-            let _handler = manager.join(guild_id, channel_id).await;
+    let guild_id = guild.id;
+
+    let channel_id = guild
+        .voice_states
+        .get(&msg.author.id)
+        .and_then(|voice_state| voice_state.channel_id);
+
+    let connect_to = match channel_id {
+        Some(channel) => channel,
+        None => {
+            msg.reply(ctx, "Not in a voice channel").await?;
+
+            return Ok(());
         }
-    } else {
-        info!("User is not in a voice channel");
-        msg.reply(&ctx.http, "You're not in a voice channel!")
-            .await?;
-    }
+    };
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+    let _handler = manager.join(guild_id, connect_to).await;
+
     Ok(())
 }
 
@@ -67,54 +135,21 @@ async fn join(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
-    let data_read = ctx.data.read().await;
-    let guild_id = if let Some(guild_id) = msg.guild_id {
-        guild_id
-    } else {
-        return Err(anyhow!("guild_id was not found").into());
-    };
-
-    let guild = if let Some(guild) = guild_id.to_guild_cached(ctx) {
+    let guild = if let Some(guild) = msg.guild(&ctx.cache) {
         guild
     } else {
         return Err(anyhow!("guild was not found").into());
     };
 
-    let bot_id = match data_read.get::<CurrentUserId>() {
-        Some(id) => *id,
-        None => {
-            eprintln!("Something went wrong getting the bot id");
-            return Ok(());
-        }
-    };
+    let guild_id = guild.id;
 
-    if let Some(bot_voice_state) = guild.voice_states.get(&bot_id) {
-        if let Some(author_voice_state) = guild.voice_states.get(&msg.author.id) {
-            if let Some(bot_channel_id) = bot_voice_state.channel_id {
-                info!("h4bot is in voice channel with id {}", bot_channel_id.0);
-            }
-            if let Some(author_channel_id) = author_voice_state.channel_id {
-                info!("User is in voice channel with id {}", author_channel_id.0);
-                msg.reply(
-                    &ctx.http,
-                    format!("Left channel {}", author_channel_id.mention()),
-                )
-                .await?;
-                let manager = songbird::get(ctx)
-                    .await
-                    .expect("Songbird Voice client was not initialized.")
-                    .clone();
-                let _handler = manager.leave(guild_id).await;
-            }
-        } else {
-            info!("User is not in a voice channel");
-            msg.reply(&ctx.http, "You're not in a voice channel!")
-                .await?;
-        }
-    } else {
-        info!("Not in a voice channel!");
-        msg.reply(&ctx.http, "I'm not in a voice channel!").await?;
-    }
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
+
+    let _handler = manager.leave(guild_id).await;
+
     Ok(())
 }
 
@@ -131,16 +166,101 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 #[command]
 #[aliases("p")]
 async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let data_read = ctx.data.read().await;
+    let guild = if let Some(guild) = msg.guild(&ctx.cache) {
+        guild
+    } else {
+        return Err(anyhow!("guild was not found").into());
+    };
+    let guild_id = guild.id;
+    let bot_id = match data_read.get::<CurrentUserId>() {
+        Some(id) => *id,
+        None => {
+            eprintln!("Something went wrong getting the bot id");
+            return Ok(());
+        }
+    };
+    let bot_voice_channel = guild
+        .voice_states
+        .get(&bot_id)
+        .and_then(|voice_state| voice_state.channel_id);
+
+    let user_voice_channel = guild
+        .voice_states
+        .get(&msg.author.id)
+        .and_then(|voice_state| voice_state.channel_id);
+
+    let in_same_voice = { user_voice_channel == bot_voice_channel };
+    let is_user_in_channel = user_voice_channel.is_some();
+
+    if !is_user_in_channel {
+        msg.reply(&ctx.http, "Not in a voice channel").await?;
+        return Ok(());
+    } else if !in_same_voice {
+        msg.reply(&ctx.http, "Not in the same voice channel")
+            .await?;
+        return Ok(());
+    }
+
     //https://www.youtube.com/watch?v=dQw4w9WgXcQ
     let arg = args.single::<String>()?;
-    let video_id = arg.split('=').collect::<Vec<&str>>()[1];
+    let re = Regex::new(r"v=([a-zA-Z0-9_-]+)").expect("Invalid Regex!");
+    let video_id = if let Some(captures) = re.captures(&arg) {
+        match captures.get(1) {
+            Some(id) => id.as_str(),
+            None => {
+                msg.reply(&ctx.http, "Couldn't get video id").await?;
+                return Ok(());
+            }
+        }
+    } else {
+        msg.reply(&ctx.http, "Invalid URL").await?;
+        return Ok(());
+    };
     match Id::from_str(video_id) {
-        Ok(video_id) => {
-            let fetcher = VideoFetcher::from_id(video_id.into_owned())?;
-            let video = fetcher.fetch().await?.descramble()?;
+        Ok(id) => {
+            msg.reply(&ctx.http, format!("Id: {}", id)).await?;
+            let video = Video::from_id(id.into_owned()).await?;
             let video_info = video.video_details();
-
-            msg.reply(&ctx.http, format!("Video info: {:?}", video_info))
+            let thumbnails = &video_info.thumbnails;
+            let thumbnail = &thumbnails[3].url;
+            //msg.reply(&ctx.http, format!("Thumbnails {:?}", thumbnails)).await?;
+            msg.reply(&ctx.http, "getting audio").await?;
+            let audio = handle_url(&arg).await.expect("Error creating input");
+            let connect_to = match user_voice_channel {
+                Some(channel) => channel,
+                None => {
+                    msg.reply(&ctx.http, "Not in a voice channel").await?;
+                    return Ok(());
+                }
+            };
+            let manager = songbird::get(&ctx).await.unwrap().clone();
+            let _handler = manager.join(guild_id, connect_to).await;
+            if let Some(handler_lock) = manager.get(guild_id) {
+                let mut handler = handler_lock.lock().await;
+                handler.play_source(audio.into());
+                println!("Playing audio");
+            };
+            msg.channel_id
+                .send_message(&ctx.http, |message| {
+                    message
+                        .embed(|embed| {
+                            embed
+                                .author(|author| {
+                                    author.name(&video_info.author).url(format!(
+                                        "https://www.youtube.com/channel/{}",
+                                        &video_info.channel_id
+                                    ))
+                                })
+                                .title(&video_info.title)
+                                .url(format!("https://www.youtube.com/watch?v={}", video_id))
+                                .image(thumbnail)
+                                .description(&video_info.short_description)
+                                .footer(|footer| footer.text("h4bot, made with ❤ by h4rl"))
+                        })
+                        .reference_message(msg)
+                        .allowed_mentions(|mentions| mentions.empty_parse())
+                })
                 .await?;
         }
         Err(why) => {
@@ -151,7 +271,6 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             .await?;
         }
     }
-    msg.reply(&ctx.http, "").await?;
     Ok(())
 }
 
@@ -165,7 +284,46 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
 #[command]
 async fn stop(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(&ctx.http, "lul").await?;
+    let data_read = ctx.data.read().await;
+    let guild = if let Some(guild) = msg.guild(&ctx.cache) {
+        guild
+    } else {
+        return Err(anyhow!("guild was not found").into());
+    };
+    let guild_id = guild.id;
+
+    let bot_id = match data_read.get::<CurrentUserId>() {
+        Some(id) => *id,
+        None => {
+            eprintln!("Something went wrong getting the bot id");
+            return Ok(());
+        }
+    };
+
+    let bot_voice_channel = guild
+        .voice_states
+        .get(&bot_id)
+        .and_then(|voice_state| voice_state.channel_id);
+
+    let user_voice_channel = guild
+        .voice_states
+        .get(&msg.author.id)
+        .and_then(|voice_state| voice_state.channel_id);
+
+    let in_same_voice = { user_voice_channel == bot_voice_channel };
+    if in_same_voice {
+        let manager = songbird::get(ctx)
+            .await
+            .expect("Songbird Voice client placed in at initialisation.")
+            .clone();
+
+        if let Some(handler_lock) = manager.get(guild_id) {
+            let mut handler = handler_lock.lock().await;
+            handler.stop();
+            handler.leave().await?;
+            msg.reply(&ctx.http, "Stopped playing!").await?;
+        }
+    }
     Ok(())
 }
 

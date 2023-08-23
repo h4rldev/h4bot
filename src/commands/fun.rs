@@ -1,3 +1,4 @@
+use crate::CurrentUserId;
 use futures::future::try_join_all;
 use rand::{
     rngs::{OsRng, StdRng},
@@ -14,7 +15,6 @@ use serenity::{
 };
 use std::sync::Arc;
 use tokio::task;
-
 use tracing::{error, info};
 
 #[group("Fun")]
@@ -30,7 +30,7 @@ struct Fun;
 /// !balls single
 ///
 /// //Execute the command with the "multiple" argument
-/// !balls multiple
+/// !balls multiple {amount}
 ///
 /// // Execute the command with no arguments
 /// !balls
@@ -38,16 +38,24 @@ struct Fun;
 
 #[command]
 async fn balls(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let data_read = ctx.data.read().await;
     let guild_id = match msg.guild_id {
         Some(guild_id) => guild_id,
         None => return Ok(()),
+    };
+    let bot_id = match data_read.get::<CurrentUserId>() {
+        Some(id) => *id,
+        None => {
+            eprintln!("Something went wrong getting the bot id");
+            return Ok(());
+        }
     };
     let guild = guild_id.to_partial_guild(&ctx.http).await?;
     let members = guild_id
         .members(&ctx.http, Some(1000), None)
         .await?
         .into_iter()
-        .filter(|member| !member.user.bot && member.user.id != guild.owner_id)
+        .filter(|member| member.user.id != bot_id && member.user.id != guild.owner_id)
         .collect::<Vec<Member>>();
     const NICKNAMES: [&str; 8] = [
         "testicles",

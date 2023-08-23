@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use serenity::{
     async_trait,
     framework::standard::{
@@ -17,12 +16,12 @@ use std::{
 };
 use tracing::info;
 mod commands;
+use anyhow::anyhow;
 use commands::{
     fun::FUN_GROUP,
     latency::{ShardManagerContainer, LATENCY_GROUP},
     music::MUSIC_GROUP,
 };
-const BOT_ID: UserId = UserId(871488289125838898);
 
 struct Bot;
 struct CurrentUserId;
@@ -149,7 +148,7 @@ async fn serenity(
             config
                 .with_whitespace(true)
                 .allow_dm(false)
-                .on_mention(Some(BOT_ID))
+                .on_mention(Some(UserId(871488289125838898)))
                 .prefix("!")
                 .owners(owners)
         })

@@ -3,9 +3,6 @@ name = "h4bot"
 version = "0.1.0"
 edition = "2021"
 
-[commands]
-path = "./commands/*"
-
 [[bin]]
 name = "h4bot"
 path = "src/main.rs"
@@ -22,6 +19,7 @@ serenity = { version = "0.11.6", default-features = true, features = [
   "framework",
   "standard_framework",
   "voice",
+  "builder",
 ] }
 rustube = { version = "0.6.0", features = ["tokio"] }
 songbird = { version = "0.3.2" }
@@ -29,4 +27,5 @@ shuttle-secrets = "0.24.0"
 tokio = "1.32.0"
 tracing = "0.1.37"
 futures = "0.3.28"
-rand = { git = "https://github.com/rust-random/rand.git", rev = "ff121cff61dfcb8c06a618b204ed93be727c4303" }
+regex = "1.9.3"
+rand = { version = "0.8.5" }

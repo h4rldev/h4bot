@@ -26,7 +26,6 @@ struct Latency;
 /// ```
 
 #[command]
-
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     info!("Recieved !ping command");
     let start_time = Instant::now();
@@ -54,7 +53,6 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 /// ```
 
 #[command]
-#[only_in(guild)]
 async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
     info!("Recieved !shard_ping command");
     let data = ctx.data.read().await;
@@ -62,7 +60,7 @@ async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
     let shard_manager = match data.get::<ShardManagerContainer>() {
         Some(v) => v,
         None => {
-            msg.reply(ctx, "There was a problem getting the shard manager")
+            msg.reply(&ctx.http, "There was a problem getting the shard manager")
                 .await?;
 
             return Ok(());
@@ -74,13 +72,13 @@ async fn shard_ping(ctx: &Context, msg: &Message) -> CommandResult {
     let runner = match runners.get(&ShardId(ctx.shard_id)) {
         Some(runner) => runner,
         None => {
-            msg.reply(ctx, "No shard found").await?;
+            msg.reply(&ctx.http, "No shard found").await?;
 
             return Ok(());
         }
     };
 
-    msg.reply(ctx, &format!("Pong! {:?}", runner.latency.unwrap()))
+    msg.reply(&ctx.http, format!("Pong! {:?}", runner.latency.unwrap()))
         .await?;
 
     Ok(())
