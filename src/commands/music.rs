@@ -48,7 +48,7 @@ async fn handle_url(arg: &String) -> Result<Restartable, Box<dyn std::error::Err
     let re = Regex::new(r"v=([a-zA-Z0-9_-]+)").expect("Invalid Regex!");
     match arg.find("https://www.youtube.com") {
         Some(_) => {
-            let video_id = if let Some(captures) = re.captures(&arg) {
+            let video_id = if let Some(captures) = re.captures(arg) {
                 match captures.get(1) {
                     Some(id) => id.as_str(),
                     None => {
@@ -75,20 +75,18 @@ async fn handle_url(arg: &String) -> Result<Restartable, Box<dyn std::error::Err
                     let audio = Restartable::ffmpeg(downloaded_video, true)
                         .await
                         .expect("Error creating input");
-                    return Ok(audio);
+                    Ok(audio)
                 }
                 Err(_) => {
                     let url = arg.to_owned();
                     let audio = Restartable::ffmpeg(url, true)
                         .await
                         .expect("Error creating input");
-                    return Ok(audio);
+                    Ok(audio)
                 }
             }
         }
-        None => {
-            return Err(anyhow!("Invalid URL").into());
-        }
+        None => Err(anyhow!("Invalid URL").into()),
     }
 }
 
@@ -234,7 +232,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                     return Ok(());
                 }
             };
-            let manager = songbird::get(&ctx).await.unwrap().clone();
+            let manager = songbird::get(ctx).await.unwrap().clone();
             let _handler = manager.join(guild_id, connect_to).await;
             if let Some(handler_lock) = manager.get(guild_id) {
                 let mut handler = handler_lock.lock().await;
