@@ -1,4 +1,5 @@
 # h4bot
 
-bot based on the shuttle serenity example
-uhh that's it
+## Currently doesn't work properly on shuttle.
+
+Will need to wait for it to update to allow stdout.

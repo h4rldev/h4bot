@@ -12,10 +12,11 @@ use shuttle_secrets::SecretStore;
 use songbird::SerenityInit;
 use std::{
     collections::{HashMap, HashSet},
+    //env,
     sync::Arc,
 };
 use tracing::info;
-mod commands;
+pub mod commands;
 use anyhow::anyhow;
 use commands::{
     fun::FUN_GROUP,
@@ -132,12 +133,15 @@ impl EventHandler for Bot {
 async fn serenity(
     #[shuttle_secrets::Secrets] secret_store: SecretStore,
 ) -> shuttle_serenity::ShuttleSerenity {
+    //#[tokio::main]
+    //async fn main() {
     // Get the discord token set in `Secrets.toml`
     let token = if let Some(token) = secret_store.get("DISCORD_TOKEN") {
         token
     } else {
         return Err(anyhow!("'DISCORD_TOKEN' was not found").into());
     };
+    //let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
     let owners = get_owner(token.clone()).await;
 
     // Set gateway intents, which decides what events the bot will be notified about
@@ -160,7 +164,7 @@ async fn serenity(
         .group(&MUSIC_GROUP)
         .group(&FUN_GROUP);
 
-    let client = Client::builder(&token, intents)
+    let /*mut*/ client = Client::builder(&token, intents)
         .event_handler(Bot)
         .framework(framework)
         .register_songbird()
@@ -184,4 +188,7 @@ async fn serenity(
     }
 
     Ok(client.into())
+    /*if let Err(why) = client.start().await {
+        println!("Client error: {:?}", why);
+    }*/
 }

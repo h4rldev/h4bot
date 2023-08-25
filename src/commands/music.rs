@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::commands::queue::{self, Queue};
 use crate::CurrentUserId;
 use anyhow::anyhow;
 use regex::Regex;
@@ -13,6 +14,9 @@ use serenity::{
     prelude::*,
 };
 use songbird::input::Restartable;
+#[allow(unused_imports)]
+use tracing::info;
+use url::Url;
 
 #[group("Music")]
 #[only_in(guild)]
@@ -26,59 +30,107 @@ struct Music;
 /// // Make the bot join the channel
 /// !join
 /// ```
-
-async fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
+#[allow(dead_code)]
+async fn find_file(dir: &Path, name: &str) -> Result<Option<PathBuf>, anyhow::Error> {
     if dir.is_dir() {
-        for entry in fs::read_dir(dir).ok()? {
-            let entry = entry.ok()?;
-            let path = entry.path();
+        for entry in fs::read_dir(dir)? {
+            let path = entry?.path();
             if path.is_file() {
                 if let Some(stem) = path.file_stem() {
                     if stem == name {
-                        return Some(path.to_path_buf());
+                        return Ok(Some(path.to_path_buf()));
                     }
                 }
+            } else {
+                return Err(anyhow!("File doesn't exist"));
             }
         }
+        Err(anyhow!("Directory doesn't have entries"))
+    } else {
+        fs::create_dir(dir)?;
+        Err(anyhow!("Directory doesn't exist, creating it"))
     }
-    None
 }
 
-async fn handle_url(arg: &String) -> Result<Restartable, Box<dyn std::error::Error>> {
+async fn make_video_embed(ctx: &Context, msg: &Message, video: Video) {
+    let video_info = video.video_details();
+    let thumbnails = &video_info.thumbnails;
+    let thumbnail = &thumbnails[3].url;
+
+    msg.channel_id
+        .send_message(&ctx.http, |message| {
+            message
+                .content("Playing:")
+                .embed(|embed| {
+                    embed
+                        .author(|author| {
+                            author.name(&video_info.author).url(format!(
+                                "https://www.youtube.com/channel/{}",
+                                &video_info.channel_id
+                            ))
+                        })
+                        .title(&video_info.title)
+                        .url(format!(
+                            "https://www.youtube.com/watch?v={}",
+                            video_info.video_id
+                        ))
+                        .image(thumbnail)
+                        .description(&video_info.short_description)
+                        .footer(|footer| footer.text("h4bot, made with ❤ by h4rl"))
+                })
+                .reference_message(msg)
+                .allowed_mentions(|mentions| mentions.empty_parse())
+        })
+        .await
+        .expect("Error sending message");
+}
+
+fn validate_url(mut args: Args) -> Option<String> {
+    let mut url: String = args.single().ok()?;
+
+    if url.starts_with('<') && url.ends_with('>') {
+        url = url[1..url.len() - 1].to_string();
+    }
+
+    Url::parse(&url).ok()?;
+
+    Some(url)
+}
+
+async fn handle_url(
+    msg: &Message,
+    ctx: &Context,
+    arg: Args,
+) -> Result<Restartable, Box<dyn std::error::Error>> {
     let re = Regex::new(r"v=([a-zA-Z0-9_-]+)").expect("Invalid Regex!");
-    match arg.find("https://www.youtube.com") {
+    let url = validate_url(arg.clone()).expect("Invalid URL");
+    match url.find("https://www.youtube.com") {
         Some(_) => {
-            let video_id = if let Some(captures) = re.captures(arg) {
+            let video_id = if let Some(captures) = re.captures(&url) {
                 match captures.get(1) {
                     Some(id) => id.as_str(),
                     None => {
+                        msg.reply(&ctx.http, "Something went wrong getting the video id")
+                            .await?;
                         return Err(anyhow!("Something went wrong getting the video id").into());
                     }
                 }
             } else {
+                msg.reply(&ctx.http, "Invalid URL").await?;
                 return Err(anyhow!("Invalid URL").into());
             };
             match Id::from_str(video_id) {
                 Ok(id) => {
                     let video = Video::from_id(id.into_owned()).await?;
-                    let dir = Path::new("./music");
-                    let file = find_file(dir, video_id).await.unwrap();
-                    let downloaded_video = if fs::metadata(file.clone()).is_err() {
-                        video
-                            .best_audio()
-                            .unwrap()
-                            .download_to_dir("./music")
-                            .await?
-                    } else {
-                        file
-                    };
-                    let audio = Restartable::ffmpeg(downloaded_video, true)
+                    let url = format!("https://www.youtube.com/watch?v={}", video_id);
+                    let audio = Restartable::ytdl(url, true)
                         .await
                         .expect("Error creating input");
+                    make_video_embed(ctx, msg, video).await;
                     Ok(audio)
                 }
                 Err(_) => {
-                    let url = arg.to_owned();
+                    let url = validate_url(arg.clone()).expect("Invalid URL");
                     let audio = Restartable::ffmpeg(url, true)
                         .await
                         .expect("Error creating input");
@@ -86,7 +138,10 @@ async fn handle_url(arg: &String) -> Result<Restartable, Box<dyn std::error::Err
                 }
             }
         }
-        None => Err(anyhow!("Invalid URL").into()),
+        None => {
+            msg.reply(&ctx.http, "Invalid URL").await?;
+            Err(anyhow!("Invalid URL").into())
+        }
     }
 }
 
@@ -163,7 +218,8 @@ async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 #[aliases("p")]
-async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+async fn play(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    let manager = songbird::get(ctx).await.unwrap().clone();
     let data_read = ctx.data.read().await;
     let guild = if let Some(guild) = msg.guild(&ctx.cache) {
         guild
@@ -178,6 +234,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             return Ok(());
         }
     };
+
     let bot_voice_channel = guild
         .voice_states
         .get(&bot_id)
@@ -188,87 +245,53 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         .get(&msg.author.id)
         .and_then(|voice_state| voice_state.channel_id);
 
-    let in_same_voice = { user_voice_channel == bot_voice_channel };
-    let is_user_in_channel = user_voice_channel.is_some();
-
-    if !is_user_in_channel {
-        msg.reply(&ctx.http, "Not in a voice channel").await?;
-        return Ok(());
-    } else if !in_same_voice {
-        msg.reply(&ctx.http, "Not in the same voice channel")
-            .await?;
-        return Ok(());
-    }
-
-    //https://www.youtube.com/watch?v=dQw4w9WgXcQ
-    let arg = args.single::<String>()?;
-    let re = Regex::new(r"v=([a-zA-Z0-9_-]+)").expect("Invalid Regex!");
-    let video_id = if let Some(captures) = re.captures(&arg) {
-        match captures.get(1) {
-            Some(id) => id.as_str(),
-            None => {
-                msg.reply(&ctx.http, "Couldn't get video id").await?;
-                return Ok(());
-            }
+    let connect_to = match user_voice_channel {
+        Some(channel) => channel,
+        None => {
+            msg.reply(&ctx.http, "Not in a voice channel").await?;
+            return Ok(());
         }
-    } else {
-        msg.reply(&ctx.http, "Invalid URL").await?;
-        return Ok(());
     };
-    match Id::from_str(video_id) {
-        Ok(id) => {
-            msg.reply(&ctx.http, format!("Id: {}", id)).await?;
-            let video = Video::from_id(id.into_owned()).await?;
-            let video_info = video.video_details();
-            let thumbnails = &video_info.thumbnails;
-            let thumbnail = &thumbnails[3].url;
-            //msg.reply(&ctx.http, format!("Thumbnails {:?}", thumbnails)).await?;
-            msg.reply(&ctx.http, "getting audio").await?;
-            let audio = handle_url(&arg).await.expect("Error creating input");
-            let connect_to = match user_voice_channel {
-                Some(channel) => channel,
-                None => {
-                    msg.reply(&ctx.http, "Not in a voice channel").await?;
-                    return Ok(());
-                }
-            };
-            let manager = songbird::get(ctx).await.unwrap().clone();
+
+    let is_user_in_channel = user_voice_channel.is_some();
+    let is_bot_in_channel = bot_voice_channel.is_some();
+
+    match (is_user_in_channel, is_bot_in_channel) {
+        (true, false) => {
+            let audio = handle_url(msg, ctx, args)
+                .await
+                .expect("Error creating input");
             let _handler = manager.join(guild_id, connect_to).await;
             if let Some(handler_lock) = manager.get(guild_id) {
                 let mut handler = handler_lock.lock().await;
                 handler.play_source(audio.into());
-                println!("Playing audio");
+                info!("Playing Music!");
             };
-            msg.channel_id
-                .send_message(&ctx.http, |message| {
-                    message
-                        .embed(|embed| {
-                            embed
-                                .author(|author| {
-                                    author.name(&video_info.author).url(format!(
-                                        "https://www.youtube.com/channel/{}",
-                                        &video_info.channel_id
-                                    ))
-                                })
-                                .title(&video_info.title)
-                                .url(format!("https://www.youtube.com/watch?v={}", video_id))
-                                .image(thumbnail)
-                                .description(&video_info.short_description)
-                                .footer(|footer| footer.text("h4bot, made with ❤ by h4rl"))
-                        })
-                        .reference_message(msg)
-                        .allowed_mentions(|mentions| mentions.empty_parse())
-                })
+        }
+        (false, _) => {
+            msg.reply(&ctx.http, "You're not in any voice channel!")
                 .await?;
         }
-        Err(why) => {
-            msg.reply(
-                &ctx.http,
-                format!("Something occured or I couldn't find video\nError: {}", why),
-            )
-            .await?;
+        (true, true) if user_voice_channel != bot_voice_channel => {
+            msg.reply(&ctx.http, "Not in the same voice channel!")
+                .await?;
+        }
+        _ => {
+            let url = validate_url(args.clone()).expect("Invalid URL");
+            let len = queue::play(ctx, guild_id, url, Queue::Back).await?;
+            let reply = if len == 1 {
+                "Started playing the song".to_string()
+            } else {
+                format!("Added song to queue: position {}", len - 1)
+            };
+            msg.reply(&ctx.http, reply).await?;
+            info!("Playing Music!");
         }
     }
+
+    //https://www.youtube.com/watch?v=dQw4w9WgXcQ
+    //msg.reply(&ctx.http, format!("Id: {}", id)).await?;
+    //msg.reply(&ctx.http, format!("Thumbnails {:?}", thumbnails)).await?;
     Ok(())
 }
 

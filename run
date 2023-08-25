@@ -3,7 +3,7 @@
 restart() {
 	clear
 	cargo shuttle project restart --idle-minutes 0
-	cargo shuttle deploy --allow-dirty
+	cargo shuttle deploy --no-test --working-directory h4bot --allow-dirty
 }
 
 deploy() {
