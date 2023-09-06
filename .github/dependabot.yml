@@ -1,6 +1,6 @@
 version: 2
 updates:
-  - package-ecosystem: "Cargo"
+  - package-ecosystem: "cargo"
     # Files stored in repository root
     directory: "/"
     schedule:
