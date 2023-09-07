@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.75"
 shuttle-serenity = "0.24.0"
+shuttle-poise = "0.24.0"
 shuttle-runtime = "0.24.0"
 serenity = { version = "0.11.6", default-features = true, features = [
   "client",
@@ -23,6 +24,7 @@ serenity = { version = "0.11.6", default-features = true, features = [
   "voice",
   "builder",
 ] }
+poise = { version = "*" }
 rustube = { version = "0.6.0", features = ["tokio"] }
 songbird = { version = "0.3.2", features = ["yt-dlp", "builtin-queue"] }
 shuttle-secrets = "0.24.0"

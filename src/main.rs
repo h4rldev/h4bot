@@ -1,4 +1,13 @@
-use serenity::{
+use anyhow::anyhow;
+use poise::CreateReply;
+use poise::{
+    serenity_prelude::GatewayIntents, Framework, FrameworkOptions, PrefixFrameworkOptions,
+};
+use serenity::model::id::GuildId;
+use shuttle_poise::ShuttlePoise;
+use std::collections::HashMap;
+use std::sync::Mutex;
+/*use serenity::{
     async_trait,
     framework::standard::{
         help_commands, macros::*, Args, CommandGroup, CommandResult, DispatchError, HelpOptions,
@@ -7,29 +16,28 @@ use serenity::{
     http::Http,
     model::{channel::Message, gateway::Ready, prelude::UserId},
     prelude::*,
-};
+};*/
 use shuttle_secrets::SecretStore;
-use songbird::SerenityInit;
-use std::{
-    collections::{HashMap, HashSet},
-    //env,
-    sync::Arc,
-};
-use tracing::info;
-pub mod commands;
-use anyhow::anyhow;
-use commands::{
-    fun::FUN_GROUP,
-    latency::{ShardManagerContainer, LATENCY_GROUP},
-    music::MUSIC_GROUP,
-};
-
 struct Bot;
-struct CurrentUserId;
+
+struct Data {
+    prefix: String,
+} // User data, which is stored and accessible in all command invocations
+type Error = Box<dyn std::error::Error + Send + Sync>;
+type Context<'a> = poise::Context<'a, Data, Error>;
+
+/*struct CurrentUserId;
+
+struct Wood;
+
 struct CommandCounter;
 
 impl TypeMapKey for CommandCounter {
     type Value = HashMap<String, u64>;
+}
+
+impl TypeMapKey for Wood {
+    type Value = bool;
 }
 
 impl TypeMapKey for CurrentUserId {
@@ -127,12 +135,31 @@ impl EventHandler for Bot {
     async fn ready(&self, _: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
     }
+}*/
+
+async fn get_prefix(ctx: Context<'_, Data, Error>) -> Result<Option<String>, Error> {
+    let prefix = ctx.data().prefix.lock.expect("Can't lock prefix");
+    Ok(Some(prefix))
+}
+
+#[poise::command(slash_command, prefix_command)]
+async fn prefix(
+    ctx: Context<'_>,
+    #[description = "prefix to change into"] prefix: String,
+) -> Result<(), Error> {
+    ctx.data().prefix = prefix;
+    Ok(())
+}
+
+#[poise::command(slash_command, prefix_command)]
+async fn wood(ctx: Context<'_>) -> Result<(), Error> {
+    Ok(())
 }
 
 #[shuttle_runtime::main]
 async fn serenity(
     #[shuttle_secrets::Secrets] secret_store: SecretStore,
-) -> shuttle_serenity::ShuttleSerenity {
+) -> ShuttlePoise<Data, Error> {
     //#[tokio::main]
     //async fn main() {
     // Get the discord token set in `Secrets.toml`
@@ -142,52 +169,46 @@ async fn serenity(
         return Err(anyhow!("'DISCORD_TOKEN' was not found").into());
     };
     //let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-    let owners = get_owner(token.clone()).await;
+    //let owners = get_owner(token.clone()).await;
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::all();
 
-    let framework = StandardFramework::new()
-        .configure(|config| {
-            config
-                .with_whitespace(true)
-                .allow_dm(false)
-                .on_mention(Some(UserId(871488289125838898)))
-                .prefix("!")
-                .owners(owners)
+    let bot_data = BotData {
+        prefixes: Mutex::new(HashMap::new()),
+    };
+
+    let framework = Framework::builder()
+        .options(FrameworkOptions {
+            commands: vec![wood()],
+            prefix_options: PrefixFrameworkOptions {
+                prefix: None,
+                dynamic_prefix: {
+                    match get_prefix {
+                        Some(prefix) => prefix,
+                        None => "!",
+                    }
+                },
+                edit_tracker: Some(poise::EditTracker::for_timespan(
+                    std::time::Duration::from_secs(3600),
+                )),
+                case_insensitive_commands: true,
+                mention_as_prefix: true,
+                ..Default::default()
+            },
+            ..Default::default()
         })
-        .before(before)
-        .after(after)
-        .unrecognised_command(unknown_command)
-        .help(&MY_HELP)
-        .group(&LATENCY_GROUP)
-        .group(&MUSIC_GROUP)
-        .group(&FUN_GROUP);
-
-    let /*mut*/ client = Client::builder(&token, intents)
-        .event_handler(Bot)
-        .framework(framework)
-        .register_songbird()
-        //.application_id(application_id.parse::<u64>().unwrap())
-        .type_map_insert::<CommandCounter>(HashMap::default())
+        .token(token)
+        .intents(intents)
+        .setup(|ctx, _ready, framework| {
+            poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+            Ok(Data { prefix })
+        })
+        .build()
         .await
-        .expect("Err creating client");
+        .map_err(shuttle_runtime::CustomError::new)?;
 
-    {
-        let mut data = client.data.write().await;
-        data.insert::<ShardManagerContainer>(Arc::clone(&client.shard_manager));
-        data.insert::<CurrentUserId>(
-            client
-                .cache_and_http
-                .http
-                .get_current_user()
-                .await
-                .expect("Failed to access current user")
-                .id,
-        );
-    }
-
-    Ok(client.into())
+    Ok(framework.into())
     /*if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
     }*/
