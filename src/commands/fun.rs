@@ -132,7 +132,6 @@ async fn balls(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                     let nicknames = Arc::clone(&nicknames);
                     let changed_nicknames = Arc::clone(&changed_nicknames);
                     task::spawn(async move {
-                        // Perform your operation here
                         let mut rng = StdRng::from_rng(OsRng).expect("Welp that's awkward");
                         let mut nicknames = nicknames.lock().await;
                         let new_nickname = match nicknames.choose_mut(&mut rng) {
@@ -193,13 +192,12 @@ async fn balls(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 Ok(_) => info!("Changed nickname to {}", bot_nickname),
                 Err(err) => error!("Failed to change nickname: {:?}", err),
             }
-            let nicknames: Arc<Mutex<Vec<&'static str>>> = Arc::new(Mutex::new(NICKNAMES.to_vec()));
-
+            let nicknames = Arc::new(Mutex::new(NICKNAMES.to_vec()));
             let users: Vec<Arc<Member>> = members
                 .iter()
                 .map(|member| Arc::new(member.clone()))
                 .collect();
-            let changed_nicknames: Arc<Mutex<Vec<Mention>>> = Arc::new(Mutex::new(Vec::new()));
+            let changed_nicknames = Arc::new(Mutex::new(Vec::new()));
             let futures = users.into_iter().map(|user| {
                 let user = Arc::clone(&user);
                 let msg = msg_clone.clone();
@@ -207,13 +205,10 @@ async fn balls(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 let nicknames = Arc::clone(&nicknames);
                 let changed_nicknames = Arc::clone(&changed_nicknames);
                 task::spawn(async move {
-                    // Perform your operation here
                     let mut rng = StdRng::from_rng(OsRng).expect("Hello");
                     let mut nicknames = nicknames.lock().await;
-                    let new_nickname = match nicknames.choose_mut(&mut rng) {
-                        Some(nickname) => *nickname,
-                        None => "balls",
-                    };
+                    let mut default = "balls";
+                    let new_nickname = nicknames.choose_mut(&mut rng).unwrap_or(&mut default);
 
                     if let Err(why) = guild_id
                         .edit_member(&ctx.http, user.user.id, |m| {
