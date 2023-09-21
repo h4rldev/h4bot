@@ -318,6 +318,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "colored"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2674ec482fbc38012cf31e6c42ba0177b431a0cb6f15fe40efa5aab1bda516f6"
+dependencies = [
+ "is-terminal",
+ "lazy_static",
+ "windows-sys",
+]
+
+[[package]]
+name = "comfy-table"
+version = "6.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e959d788268e3bf9d35ace83e81b124190378e4c91c9067524675e33394b8ba"
+dependencies = [
+ "crossterm",
+ "strum",
+ "strum_macros",
+ "unicode-width",
+]
+
+[[package]]
 name = "command_attr"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -413,6 +436,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a22b2d63d4d1dc0b7f1b6b2747dd0088008a9be28b6ddf0b1e7d335e3037294"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "crossterm"
+version = "0.26.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a84cda67535339806297f1b331d6dd6320470d2a0fe65381e79ee9e156dd3d13"
+dependencies = [
+ "bitflags 1.3.2",
+ "crossterm_winapi",
+ "libc",
+ "mio",
+ "parking_lot",
+ "signal-hook",
+ "signal-hook-mio",
+ "winapi",
+]
+
+[[package]]
+name = "crossterm_winapi"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acdd7c62a3665c7f6830a51635d9ac9b23ed385797f70a83bb8bafe9c572ab2b"
+dependencies = [
+ "winapi",
 ]
 
 [[package]]
@@ -1095,6 +1143,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28b29a3cd74f0f4598934efe3aeba42bae0eb4680554128851ebbecb02af14e6"
 
 [[package]]
+name = "is-terminal"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb0889898416213fab133e1d33a0e5858a48177452750691bde3666d0fdbaf8b"
+dependencies = [
+ "hermit-abi",
+ "rustix",
+ "windows-sys",
+]
+
+[[package]]
 name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1264,6 +1323,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "927a765cd3fc26206e66b296465fa9d3e5ab003e651c1b3c060e7956d96b19d2"
 dependencies = [
  "libc",
+ "log",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys",
 ]
@@ -2292,9 +2352,9 @@ dependencies = [
 
 [[package]]
 name = "shuttle-codegen"
-version = "0.24.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c98aa9ad7b2058e8c9f5a2756503966aec238cf7ec31093a437f468e6242f176"
+checksum = "42b8ba55ed2ca6c5066e049e9c4ac91ba341ca0d59676858438b8028b9d84ae1"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -2304,15 +2364,17 @@ dependencies = [
 
 [[package]]
 name = "shuttle-common"
-version = "0.24.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c23f31b5227a86de62657dde1130af96b9536bdd9708a19b66d45698a81364fd"
+checksum = "5cf9e5fd064c4c4419e278503401ad40a05d06faa692c1aeaf2d328c9fe75d0a"
 dependencies = [
  "anyhow",
  "async-trait",
  "axum",
  "bytes",
  "chrono",
+ "comfy-table",
+ "crossterm",
  "headers",
  "http",
  "http-body",
@@ -2324,13 +2386,15 @@ dependencies = [
  "opentelemetry-http",
  "opentelemetry-otlp",
  "pin-project",
- "prost-types",
+ "reqwest",
  "rmp-serde",
  "rustrict",
  "serde",
  "serde_json",
  "strum",
  "thiserror",
+ "tokio",
+ "tonic",
  "tower",
  "tower-http",
  "tracing",
@@ -2342,9 +2406,9 @@ dependencies = [
 
 [[package]]
 name = "shuttle-proto"
-version = "0.24.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ded5e27c6281d14d66f3970302c878472e82bce6c28e04e9e664c8eaa086054"
+checksum = "1fbced5923ae746e163c4d0132e6b5a9a247b0fe2fe9f3177cc085dfa251e84b"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2361,13 +2425,14 @@ dependencies = [
 
 [[package]]
 name = "shuttle-runtime"
-version = "0.24.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f734c5310cfed64c86bddc32ae6c7e0cd6f773ecaf2a93370690cc13f0e7d8a"
+checksum = "b5821f66337755804f83f52b2d4b1fc0d39f43a6b6c9fab799e23e8864fcc9e4"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "colored",
  "prost-types",
  "serde",
  "serde_json",
@@ -2381,15 +2446,14 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tower",
- "tracing",
  "tracing-subscriber",
 ]
 
 [[package]]
 name = "shuttle-secrets"
-version = "0.24.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a24e7bc76182802bddaaa184a8f55b9ff47a88a5463d641857c9480f86ae08a2"
+checksum = "93794ded9d8007f23d9564692991eec5b6c2b141438790067ce5990a3499983c"
 dependencies = [
  "async-trait",
  "serde",
@@ -2398,9 +2462,9 @@ dependencies = [
 
 [[package]]
 name = "shuttle-serenity"
-version = "0.24.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d51528255ea22722bd603ed28575178fcf3d954627d1b54a202784ddd704b993"
+checksum = "a78fbc9778b121855e5c6bf3f138a06b55ae0a23423bb95b468a7d17427db745"
 dependencies = [
  "serenity",
  "shuttle-runtime",
@@ -2408,9 +2472,9 @@ dependencies = [
 
 [[package]]
 name = "shuttle-service"
-version = "0.24.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9853b0443da1b2040d6f46368872584c86aaad73219c60b3506251c4e77bbc9e"
+checksum = "3f6d1b15c4945d1122637647148163f11c698ff2776303dcbfbbbece40beb735"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2418,6 +2482,27 @@ dependencies = [
  "shuttle-common",
  "strfmt",
  "thiserror",
+]
+
+[[package]]
+name = "signal-hook"
+version = "0.3.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8621587d4798caf8eb44879d42e56b9a93ea5dcd315a6487c357130095b62801"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
+
+[[package]]
+name = "signal-hook-mio"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29ad2e15f37ec9a6cc544097b78a1ec90001e9f71b81338ca39f430adaca99af"
+dependencies = [
+ "libc",
+ "mio",
+ "signal-hook",
 ]
 
 [[package]]
@@ -3068,6 +3153,12 @@ checksum = "5c5713f0fc4b5db668a2ac63cdb7bb4469d8c9fed047b1d0292cc7b0ce2ba921"
 dependencies = [
  "tinyvec",
 ]
+
+[[package]]
+name = "unicode-width"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
 
 [[package]]
 name = "universal-hash"
