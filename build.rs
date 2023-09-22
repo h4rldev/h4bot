@@ -25,9 +25,9 @@ fn update() {
 
 fn main() {
     // Install external dependency (in the shuttle container only)
-    if std::env::var("HOSTNAME")
+    if !std::env::var("HOSTNAME")
         .unwrap_or_default()
-        .contains("shuttle")
+        .contains("goop-production-machine")
     {
         loop {
             match std::process::Command::new("apt")
