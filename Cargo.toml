@@ -8,26 +8,13 @@ build = "build.rs"
 name = "h4bot"
 path = "src/main.rs"
 
-[workspace]
+
+[build-dependencies]
 
 [dependencies]
 anyhow = "1.0.75"
-shuttle-serenity = "0.27.0"
-shuttle-runtime = "0.27.0"
-serenity = { version = "0.11.6", default-features = true, features = [
-  "client",
-  "gateway",
-  "rustls_backend",
-  "model",
-  "framework",
-  "standard_framework",
-  "voice",
-  "builder",
-] }
-rustube = { version = "0.6.0", features = ["tokio"] }
-songbird = { version = "0.3.2", features = ["yt-dlp", "builtin-queue"] }
-shuttle-secrets = "0.27.0"
 tokio = "1.32.0"
+reqwest = "0.11.23"
 tracing = "0.1.37"
 futures = "0.3.28"
 regex = "1.9.3"
