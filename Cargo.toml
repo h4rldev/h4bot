@@ -4,15 +4,9 @@ version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
-[[bin]]
-name = "h4bot"
-path = "src/main.rs"
-
-
-[build-dependencies]
-
 [dependencies]
 anyhow = "1.0.75"
+poise = { version = "0.5.2", features = ["cache"] }
 tokio = "1.32.0"
 reqwest = "0.11.23"
 tracing = "0.1.37"
@@ -20,3 +14,6 @@ futures = "0.3.28"
 regex = "1.9.3"
 url = "2.4.0"
 rand = { version = "0.8.5" }
+shuttle-poise = "0.36.0"
+shuttle-secrets = "0.36.0"
+shuttle-runtime = { version = "0.36.0", features = ["tracing-subscriber"] }

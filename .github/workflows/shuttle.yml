@@ -15,6 +15,6 @@ jobs:
       - uses: shuttle-hq/deploy-action@main
         with:
           deploy-key: ${{ secrets.SHUTTLE_DEPLOY_KEY }}
-          name: "h4bot"
+          name: "fardbot"
           allow-dirty: "true"
           no-test: "true"

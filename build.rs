@@ -1,3 +1,3 @@
 fn main() {
-    todo!("Implement this in poise")
+    println!("cargo:warning=Not need for build command hihi");
 }
