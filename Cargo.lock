@@ -693,6 +693,7 @@ dependencies = [
  "rand",
  "regex",
  "reqwest",
+ "serde",
  "shuttle-poise",
  "shuttle-runtime",
  "shuttle-secrets",

@@ -17,3 +17,4 @@ rand = { version = "0.8.5" }
 shuttle-poise = "0.36.0"
 shuttle-secrets = "0.36.0"
 shuttle-runtime = { version = "0.36.0", features = ["tracing-subscriber"] }
+serde = { version = "1.0.195", features = ["derive"] }
