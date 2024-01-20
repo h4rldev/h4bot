@@ -6,7 +6,7 @@ use shuttle_secrets::SecretStore;
 mod commands;
 use commands::{
     fun::{balls, hello},
-    latency::ping,
+    latency::{ping, status},
 };
 
 pub struct Data {}
@@ -21,7 +21,7 @@ async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shuttle
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![hello(), balls(), ping()],
+            commands: vec![hello(), balls(), ping(), status()],
             ..Default::default()
         })
         .token(discord_token)
