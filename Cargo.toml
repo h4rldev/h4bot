@@ -6,15 +6,14 @@ build = "build.rs"
 
 [dependencies]
 anyhow = "1.0.75"
-poise = { version = "0.5.2", features = ["cache"] }
-tokio = "1.32.0"
-reqwest = "0.11.23"
+poise = { version = "0.6.1", features = ["cache"] }
+tokio = { version = "1.32.0", features = ["rt-multi-thread"] }
+reqwest = { version = "0.11.23", features = ["json"] }
 tracing = "0.1.37"
 futures = "0.3.28"
 regex = "1.9.3"
 url = "2.4.0"
 rand = { version = "0.8.5" }
-shuttle-poise = "0.36.0"
-shuttle-secrets = "0.36.0"
-shuttle-runtime = { version = "0.36.0", features = ["tracing-subscriber"] }
 serde = { version = "1.0.195", features = ["derive"] }
+dotenvy = "0.15.7"
+tracing-subscriber = "0.3.18"

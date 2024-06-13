@@ -15,7 +15,6 @@ mkShell {
   LD_LIBRARY_PATH = lib.makeLibraryPath [ openssl ];
   packages = with pkgs; [
     zsh
-    trunk-io
   ];
   shellHook = ''
     echo "Welcome to h4bot's nix-shell :)"
