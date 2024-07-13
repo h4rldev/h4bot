@@ -8,3 +8,8 @@ updates:
     allow:
       - dependency-name: "all"
         dependency-type: "direct"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
